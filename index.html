@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Farmer Assistant</title>
 
@@ -22,7 +22,7 @@ video {
 
 #panel {
   position: fixed;
-  bottom: 18px;
+  bottom: 90px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0,0,0,0.7);
@@ -32,6 +32,21 @@ video {
   max-width: 92%;
   text-align: center;
   font-size: 15px;
+  white-space: pre-line;
+}
+
+#lockBtn {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 14px 26px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 18px;
+  border: none;
+  background: #00c853;
+  color: black;
 }
 </style>
 </head>
@@ -40,7 +55,9 @@ video {
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas" width="640" height="640" style="display:none"></canvas>
+
 <div id="panel">Starting camera…</div>
+<button id="lockBtn">Lock Soil</button>
 
 <script>
 /* ================= CONFIG ================= */
@@ -53,18 +70,16 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const panel = document.getElementById("panel");
+const lockBtn = document.getElementById("lockBtn");
 
 let busy = false;
 let locked = false;
+let currentSoil = null;
 
 /* ============== CAMERA =================== */
 async function initCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: "environment",
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
+    video: { facingMode: "environment" },
     audio: false
   });
 
@@ -72,7 +87,7 @@ async function initCamera() {
   video.onloadedmetadata = () => {
     video.play();
     panel.innerText = "Detecting soil…";
-    setInterval(runInference, 500); // every 0.5s
+    setInterval(runInference, 500);
   };
 }
 
@@ -86,7 +101,7 @@ function getLocation() {
   });
 }
 
-/* ============== SEASON LOGIC ============== */
+/* ============== SEASON =================== */
 function getClimateZone(lat) {
   if (lat >= -23.5 && lat <= 23.5) return "tropical";
   if (lat > 23.5 && lat <= 40) return "subtropical";
@@ -94,27 +109,16 @@ function getClimateZone(lat) {
 }
 
 function getSeasonByLocation(lat) {
-  const month = new Date().getMonth(); // 0–11
-  const climate = getClimateZone(lat);
+  const m = new Date().getMonth();
+  const c = getClimateZone(lat);
 
-  if (climate === "tropical") {
-    if (month >= 5 && month <= 8) return "monsoon";
-    if (month >= 9 && month <= 10) return "postmonsoon";
-    if (month >= 11 || month <= 1) return "winter";
+  if (c === "tropical") {
+    if (m >= 5 && m <= 8) return "monsoon";
+    if (m >= 9 && m <= 10) return "postmonsoon";
+    if (m >= 11 || m <= 1) return "winter";
     return "summer";
   }
-
-  if (climate === "subtropical") {
-    if (month >= 5 && month <= 8) return "rainy";
-    if (month >= 9 && month <= 10) return "autumn";
-    if (month >= 11 || month <= 1) return "winter";
-    return "spring";
-  }
-
-  if (month >= 2 && month <= 4) return "spring";
-  if (month >= 5 && month <= 7) return "summer";
-  if (month >= 8 && month <= 9) return "autumn";
-  return "winter";
+  return "summer";
 }
 
 /* ============== CROP RULES ================ */
@@ -125,42 +129,36 @@ const cropRules = {
     winter: ["Pulses", "Vegetables", "Millets"],
     summer: ["Groundnut", "Millets"]
   },
-
   red: {
     monsoon: ["Groundnut", "Pigeon Pea", "Millets"],
     postmonsoon: ["Pulses", "Vegetables", "Millets"],
     winter: ["Vegetables", "Millets"],
     summer: ["Millets"]
   },
-
   alluvial: {
     monsoon: ["Rice", "Sugarcane", "Maize", "Millets"],
     postmonsoon: ["Wheat", "Mustard", "Barley", "Millets"],
     winter: ["Wheat", "Chickpea", "Vegetables", "Millets"],
     summer: ["Maize", "Vegetables", "Millets"]
   },
-
   yellow: {
     monsoon: ["Rice", "Maize", "Groundnut", "Millets"],
     postmonsoon: ["Pulses", "Vegetables", "Millets"],
     winter: ["Vegetables", "Millets"],
     summer: ["Millets"]
   },
-
   mountain: {
     monsoon: ["Maize", "Barley", "Millets"],
     postmonsoon: ["Wheat", "Vegetables", "Millets"],
     winter: ["Apple", "Potato", "Barley", "Millets"],
     summer: ["Vegetables", "Millets"]
   },
-
   arid: {
     monsoon: ["Pearl Millet", "Cluster Beans", "Millets"],
     postmonsoon: ["Pulses", "Millets"],
     winter: ["Mustard", "Barley", "Millets"],
     summer: ["Millets"]
   },
-
   black: {
     monsoon: ["Cotton", "Soybean", "Millets"],
     postmonsoon: ["Sorghum", "Sunflower", "Millets"],
@@ -187,37 +185,48 @@ async function runInference() {
       })
     });
 
-    const data = await res.json();
-    const preds = data.outputs?.[0]?.predictions;
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw "Bad JSON"; }
+
+    const preds =
+      data.outputs?.[0]?.predictions ||
+      data.outputs?.[0]?.data?.predictions;
+
     if (!preds || preds.length === 0) {
+      panel.innerText = "No soil detected";
       busy = false;
       return;
     }
 
-    const soil = preds[0].class.toLowerCase();
-    locked = true;
-    showResult(soil);
+    currentSoil = preds[0].class.toLowerCase();
+    panel.innerText = `Detected soil:\n${currentSoil}`;
 
   } catch {
-    panel.innerText = "Inference error";
+    panel.innerText = "Inference temporarily unavailable";
   }
 
   busy = false;
 }
 
-/* ============== FINAL OUTPUT ============== */
-async function showResult(soil) {
+/* ============== LOCK BUTTON ============== */
+lockBtn.onclick = async () => {
+  if (!currentSoil) return;
+
+  locked = true;
+  lockBtn.style.display = "none";
+
   try {
     const loc = await getLocation();
     const season = getSeasonByLocation(loc.latitude);
-
     const crops =
-      cropRules[soil]?.[season] || ["Millets"];
+      cropRules[currentSoil]?.[season] || ["Millets"];
 
     panel.innerText =
 `📍 Location detected
 🌦 Season: ${season}
-🌱 Soil: ${soil}
+🌱 Soil: ${currentSoil}
 
 🌾 Recommended crops:
 ${crops.join(", ")}
@@ -227,12 +236,12 @@ ${crops[crops.length - 1]}`;
 
   } catch {
     panel.innerText =
-`🌱 Soil: ${soil}
+`🌱 Soil: ${currentSoil}
 
 🌾 Recommended crop:
-Millets (low cost, safe option)`;
+Millets (low-cost fallback)`;
   }
-}
+};
 
 /* ============== START ===================== */
 initCamera();
