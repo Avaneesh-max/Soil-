@@ -3,88 +3,109 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Soil AI Farmer Assistant</title>
+<title>AI Farmer Assistant</title>
 
 <style>
-body { margin:0; background:black; font-family:system-ui; overflow:hidden;}
+body { margin:0; background:black; font-family:system-ui; overflow:hidden; }
 video { width:100vw; height:100vh; object-fit:cover; }
-#info { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
-        background: rgba(0,0,0,0.6); color:white; padding:12px 20px;
-        border-radius:16px; font-size:16px; font-weight:600; text-align:center;}
+#box {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.7); color:white;
+  padding:14px 20px; border-radius:16px;
+  max-width:90%; text-align:center;
+}
 </style>
 </head>
 
 <body>
+
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas" width="640" height="640" style="display:none"></canvas>
-<div id="info">Starting AI…</div>
+<div id="box">Initializing AI…</div>
 
 <script>
-const WORKFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
-const API_KEY = "CxxhkxfjWLeZydDtSjFd"; // 🔒 regenerate later
+const ROBOFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
+const ROBOFLOW_KEY = "CxxhkxfjWLeZydDtSjFd";
+
+const OPENAI_KEY = "OPENAI_API_KEY_HERE"; // 🔴 REQUIRED
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const info = document.getElementById("info");
-let busy = false;
+const box = document.getElementById("box");
 
-// Soil → Crop mapping
-const cropSuggestions = {
-  "laterite soil": "Cashew, Coffee, Coconut",
-  "alluvial soil": "Rice, Wheat, Sugarcane",
-  "red soil": "Cotton, Groundnut, Millets",
-  "black soil": "Cotton, Soybean, Sunflower"
-};
+let locked = false;
 
 async function init() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{ facingMode:"environment", width:{ideal:1280}, height:{ideal:720} },
-    audio:false
+    video:{ facingMode:"environment" }, audio:false
   });
   video.srcObject = stream;
-  video.onloadedmetadata = ()=> {
+  video.onloadedmetadata = () => {
     video.play();
-    setInterval(runInference, 500); // every 0.5s
+    setInterval(detectSoil, 500);
   };
 }
 
-async function runInference() {
-  if(busy) return;
-  busy=true;
+async function detectSoil() {
+  if (locked) return;
 
   ctx.drawImage(video,0,0,640,640);
-  const imageBase64 = canvas.toDataURL("image/jpeg",0.7).split(",")[1];
+  const img = canvas.toDataURL("image/jpeg",0.7).split(",")[1];
 
-  try{
-    const res = await fetch(WORKFLOW_URL,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        api_key:API_KEY,
-        inputs:{ image:{ type:"base64", value:imageBase64 } }
-      })
-    });
+  const res = await fetch(ROBOFLOW_URL,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({
+      api_key: ROBOFLOW_KEY,
+      inputs:{ image:{ type:"base64", value: img } }
+    })
+  });
 
-    const data = await res.json();
+  const data = await res.json();
+  if (!data.outputs?.[0]?.predictions?.length) return;
 
-    if(data.outputs && data.outputs.length>0 && data.outputs[0].predictions && data.outputs[0].predictions.length>0){
-      const soilLabel = data.outputs[0].predictions[0].class.toLowerCase();
-      const crop = cropSuggestions[soilLabel] || "No suggestion";
-      const now = new Date();
-      const date = now.toLocaleDateString();
-      const time = now.toLocaleTimeString();
+  const soil = data.outputs[0].predictions[0].class;
+  locked = true;
 
-      info.innerText = `Soil: ${soilLabel}\nDate: ${date}\nTime: ${time}\nSuggested Crop: ${crop}`;
-    } else {
-      info.innerText = "No soil detected";
-    }
+  const now = new Date();
+  const date = now.toLocaleDateString();
+  const time = now.toLocaleTimeString();
 
-  } catch(e){
-    info.innerText="AI Error";
-  }
+  box.innerText = `Soil detected: ${soil}\nConsulting AI…`;
 
-  busy=false;
+  askChatGPT(soil, date, time);
+}
+
+async function askChatGPT(soil, date, time) {
+  const prompt = `
+Soil type: ${soil}
+Date: ${date}
+Time: ${time}
+Region: Tropical (India)
+
+What is the best crop to grow now?
+Give a short answer for a farmer.
+`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer " + OPENAI_KEY
+    },
+    body:JSON.stringify({
+      model:"gpt-4.1-mini",
+      messages:[{role:"user",content:prompt}],
+      max_tokens:100
+    })
+  });
+
+  const data = await res.json();
+  const answer = data.choices[0].message.content;
+
+  box.innerText =
+    `Soil: ${soil}\nDate: ${date}\nTime: ${time}\n\n🌱 Best crop:\n${answer}`;
 }
 
 init();
