@@ -50,23 +50,27 @@ const MODEL_URL = "https://teachablemachine.withgoogle.com/models/S9q_dztT1/";
 
 let model;
 let lastClass = "";
+let predicting = false;
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 async function init() {
+  // Force WebGL (FASTER)
+  await tf.setBackend("webgl");
+
   model = await tmImage.load(
     MODEL_URL + "model.json",
     MODEL_URL + "metadata.json"
   );
 
-  // FORCE BACK CAMERA
+  // BACK CAMERA
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {
-      facingMode: { exact: "environment" },
-      width: { ideal: 640 },
-      height: { ideal: 480 }
+      facingMode: "environment",
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
     },
     audio: false
   });
@@ -74,14 +78,21 @@ async function init() {
   video.srcObject = stream;
   video.onloadedmetadata = () => {
     video.play();
-    predictLoop();
+    startPredictionLoop();
   };
 }
 
-async function predictLoop() {
-  ctx.drawImage(video, 0, 0, 224, 224);
+function startPredictionLoop() {
+  setInterval(runPrediction, 500); // ✅ 0.5 seconds
+}
 
+async function runPrediction() {
+  if (predicting) return;
+  predicting = true;
+
+  ctx.drawImage(video, 0, 0, 224, 224);
   const predictions = await model.predict(canvas);
+
   const best = predictions.reduce((a,b)=>a.probability>b.probability?a:b);
 
   if (best.className !== lastClass) {
@@ -89,8 +100,7 @@ async function predictLoop() {
     lastClass = best.className;
   }
 
-  // Run at ~8 FPS (FAST + STABLE)
-  setTimeout(predictLoop, 120);
+  predicting = false;
 }
 
 init();
