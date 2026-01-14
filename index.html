@@ -1,18 +1,37 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Farmer Assistant</title>
 
 <style>
-body { margin:0; background:black; font-family:system-ui; overflow:hidden; }
-video { width:100vw; height:100vh; object-fit:cover; }
-#box {
-  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-  background:rgba(0,0,0,0.7); color:white;
-  padding:14px 20px; border-radius:16px;
-  max-width:90%; text-align:center;
+html, body {
+  margin: 0;
+  padding: 0;
+  background: black;
+  font-family: system-ui;
+  overflow: hidden;
+}
+
+video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+}
+
+#panel {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  color: white;
+  padding: 14px 18px;
+  border-radius: 16px;
+  max-width: 92%;
+  text-align: center;
+  font-size: 15px;
 }
 </style>
 </head>
@@ -21,94 +40,203 @@ video { width:100vw; height:100vh; object-fit:cover; }
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas" width="640" height="640" style="display:none"></canvas>
-<div id="box">Initializing AI…</div>
+<div id="panel">Starting camera…</div>
 
 <script>
-const ROBOFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
+/* ================= CONFIG ================= */
+const ROBOFLOW_URL =
+  "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 const ROBOFLOW_KEY = "CxxhkxfjWLeZydDtSjFd";
 
-const OPENAI_KEY = "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"; // 🔴 REQUIRED
-
+/* =============== ELEMENTS ================= */
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const box = document.getElementById("box");
+const panel = document.getElementById("panel");
 
+let busy = false;
 let locked = false;
 
-async function init() {
+/* ============== CAMERA =================== */
+async function initCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video:{ facingMode:"environment" }, audio:false
+    video: {
+      facingMode: "environment",
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
   });
+
   video.srcObject = stream;
   video.onloadedmetadata = () => {
     video.play();
-    setInterval(detectSoil, 500);
+    panel.innerText = "Detecting soil…";
+    setInterval(runInference, 500); // every 0.5s
   };
 }
 
-async function detectSoil() {
-  if (locked) return;
-
-  ctx.drawImage(video,0,0,640,640);
-  const img = canvas.toDataURL("image/jpeg",0.7).split(",")[1];
-
-  const res = await fetch(ROBOFLOW_URL,{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({
-      api_key: ROBOFLOW_KEY,
-      inputs:{ image:{ type:"base64", value: img } }
-    })
+/* ============== LOCATION ================= */
+function getLocation() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(pos.coords),
+      () => reject()
+    );
   });
-
-  const data = await res.json();
-  if (!data.outputs?.[0]?.predictions?.length) return;
-
-  const soil = data.outputs[0].predictions[0].class;
-  locked = true;
-
-  const now = new Date();
-  const date = now.toLocaleDateString();
-  const time = now.toLocaleTimeString();
-
-  box.innerText = `Soil detected: ${soil}\nConsulting AI…`;
-
-  askChatGPT(soil, date, time);
 }
 
-async function askChatGPT(soil, date, time) {
-  const prompt = `
-Soil type: ${soil}
-Date: ${date}
-Time: ${time}
-Region: Tropical (India)
-
-What is the best crop to grow now?
-Give a short answer for a farmer.
-`;
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":"Bearer " + OPENAI_KEY
-    },
-    body:JSON.stringify({
-      model:"gpt-4.1-mini",
-      messages:[{role:"user",content:prompt}],
-      max_tokens:100
-    })
-  });
-
-  const data = await res.json();
-  const answer = data.choices[0].message.content;
-
-  box.innerText =
-    `Soil: ${soil}\nDate: ${date}\nTime: ${time}\n\n🌱 Best crop:\n${answer}`;
+/* ============== SEASON LOGIC ============== */
+function getClimateZone(lat) {
+  if (lat >= -23.5 && lat <= 23.5) return "tropical";
+  if (lat > 23.5 && lat <= 40) return "subtropical";
+  return "temperate";
 }
 
-init();
+function getSeasonByLocation(lat) {
+  const month = new Date().getMonth(); // 0–11
+  const climate = getClimateZone(lat);
+
+  if (climate === "tropical") {
+    if (month >= 5 && month <= 8) return "monsoon";
+    if (month >= 9 && month <= 10) return "postmonsoon";
+    if (month >= 11 || month <= 1) return "winter";
+    return "summer";
+  }
+
+  if (climate === "subtropical") {
+    if (month >= 5 && month <= 8) return "rainy";
+    if (month >= 9 && month <= 10) return "autumn";
+    if (month >= 11 || month <= 1) return "winter";
+    return "spring";
+  }
+
+  if (month >= 2 && month <= 4) return "spring";
+  if (month >= 5 && month <= 7) return "summer";
+  if (month >= 8 && month <= 9) return "autumn";
+  return "winter";
+}
+
+/* ============== CROP RULES ================ */
+const cropRules = {
+  laterite: {
+    monsoon: ["Rice", "Cashew", "Coconut", "Millets"],
+    postmonsoon: ["Banana", "Vegetables", "Millets"],
+    winter: ["Pulses", "Vegetables", "Millets"],
+    summer: ["Groundnut", "Millets"]
+  },
+
+  red: {
+    monsoon: ["Groundnut", "Pigeon Pea", "Millets"],
+    postmonsoon: ["Pulses", "Vegetables", "Millets"],
+    winter: ["Vegetables", "Millets"],
+    summer: ["Millets"]
+  },
+
+  alluvial: {
+    monsoon: ["Rice", "Sugarcane", "Maize", "Millets"],
+    postmonsoon: ["Wheat", "Mustard", "Barley", "Millets"],
+    winter: ["Wheat", "Chickpea", "Vegetables", "Millets"],
+    summer: ["Maize", "Vegetables", "Millets"]
+  },
+
+  yellow: {
+    monsoon: ["Rice", "Maize", "Groundnut", "Millets"],
+    postmonsoon: ["Pulses", "Vegetables", "Millets"],
+    winter: ["Vegetables", "Millets"],
+    summer: ["Millets"]
+  },
+
+  mountain: {
+    monsoon: ["Maize", "Barley", "Millets"],
+    postmonsoon: ["Wheat", "Vegetables", "Millets"],
+    winter: ["Apple", "Potato", "Barley", "Millets"],
+    summer: ["Vegetables", "Millets"]
+  },
+
+  arid: {
+    monsoon: ["Pearl Millet", "Cluster Beans", "Millets"],
+    postmonsoon: ["Pulses", "Millets"],
+    winter: ["Mustard", "Barley", "Millets"],
+    summer: ["Millets"]
+  },
+
+  black: {
+    monsoon: ["Cotton", "Soybean", "Millets"],
+    postmonsoon: ["Sorghum", "Sunflower", "Millets"],
+    winter: ["Wheat", "Chickpea", "Millets"],
+    summer: ["Sunflower", "Millets"]
+  }
+};
+
+/* ============== INFERENCE ================= */
+async function runInference() {
+  if (busy || locked) return;
+  busy = true;
+
+  ctx.drawImage(video, 0, 0, 640, 640);
+  const img = canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
+
+  try {
+    const res = await fetch(ROBOFLOW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: ROBOFLOW_KEY,
+        inputs: { image: { type: "base64", value: img } }
+      })
+    });
+
+    const data = await res.json();
+    const preds = data.outputs?.[0]?.predictions;
+    if (!preds || preds.length === 0) {
+      busy = false;
+      return;
+    }
+
+    const soil = preds[0].class.toLowerCase();
+    locked = true;
+    showResult(soil);
+
+  } catch {
+    panel.innerText = "Inference error";
+  }
+
+  busy = false;
+}
+
+/* ============== FINAL OUTPUT ============== */
+async function showResult(soil) {
+  try {
+    const loc = await getLocation();
+    const season = getSeasonByLocation(loc.latitude);
+
+    const crops =
+      cropRules[soil]?.[season] || ["Millets"];
+
+    panel.innerText =
+`📍 Location detected
+🌦 Season: ${season}
+🌱 Soil: ${soil}
+
+🌾 Recommended crops:
+${crops.join(", ")}
+
+💰 Lowest-cost option:
+${crops[crops.length - 1]}`;
+
+  } catch {
+    panel.innerText =
+`🌱 Soil: ${soil}
+
+🌾 Recommended crop:
+Millets (low cost, safe option)`;
+  }
+}
+
+/* ============== START ===================== */
+initCamera();
 </script>
+
 </body>
 </html>
