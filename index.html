@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>AI Vision</title>
 
@@ -13,68 +13,47 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: #020617;
+  background: black;
   overflow: hidden;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  font-family: system-ui;
 }
 
-/* Camera */
-#camera canvas {
+video {
   width: 100vw;
   height: 100vh;
   object-fit: cover;
 }
 
-/* HUD */
-#hud {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-}
-
-/* Title */
-#title {
-  position: absolute;
-  top: 14px;
-  width: 100%;
-  text-align: center;
-  font-size: 11px;
-  letter-spacing: 0.35em;
-  color: rgba(255,255,255,0.55);
-}
-
-/* Result */
 #result {
-  position: absolute;
-  bottom: 28px;
+  position: fixed;
+  bottom: 26px;
   left: 50%;
   transform: translateX(-50%);
   padding: 10px 18px;
-  border-radius: 16px;
-  background: rgba(15,23,42,0.6);
+  background: rgba(0,0,0,0.6);
   color: white;
-  font-size: 15px;
+  border-radius: 14px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
 </style>
 </head>
 
 <body>
 
-<div id="camera"></div>
-
-<div id="hud">
-  <div id="title">AI • VISION</div>
-  <div id="result">Loading…</div>
-</div>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas" width="224" height="224" style="display:none"></canvas>
+<div id="result">Loading…</div>
 
 <script>
 const MODEL_URL = "https://teachablemachine.withgoogle.com/models/S9q_dztT1/";
 
-let model, webcam;
+let model;
 let lastClass = "";
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
 async function init() {
   model = await tmImage.load(
@@ -82,31 +61,36 @@ async function init() {
     MODEL_URL + "metadata.json"
   );
 
-  // Force BACK CAMERA
-  webcam = new tmImage.Webcam(400, 300, false);
-  await webcam.setup({
-    facingMode: { exact: "environment" }
+  // FORCE BACK CAMERA
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { exact: "environment" },
+      width: { ideal: 640 },
+      height: { ideal: 480 }
+    },
+    audio: false
   });
-  await webcam.play();
 
-  document.getElementById("camera").appendChild(webcam.canvas);
-  requestAnimationFrame(loop);
+  video.srcObject = stream;
+  video.onloadedmetadata = () => {
+    video.play();
+    predictLoop();
+  };
 }
 
-async function loop() {
-  webcam.update();
-  await predict();
-  setTimeout(() => requestAnimationFrame(loop), 700);
-}
+async function predictLoop() {
+  ctx.drawImage(video, 0, 0, 224, 224);
 
-async function predict() {
-  const predictions = await model.predict(webcam.canvas);
+  const predictions = await model.predict(canvas);
   const best = predictions.reduce((a,b)=>a.probability>b.probability?a:b);
 
   if (best.className !== lastClass) {
     document.getElementById("result").innerText = best.className;
     lastClass = best.className;
   }
+
+  // Run at ~8 FPS (FAST + STABLE)
+  setTimeout(predictLoop, 120);
 }
 
 init();
