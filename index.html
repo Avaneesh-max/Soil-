@@ -1,17 +1,21 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<title>AI Vision</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
 <style>
-body {
+html, body {
   margin: 0;
-  background: black;
+  padding: 0;
+  background: #020617;
   overflow: hidden;
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
 }
 
 /* Camera */
@@ -21,19 +25,38 @@ body {
   object-fit: cover;
 }
 
-/* Lightweight HUD */
-#label {
+/* HUD */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Title */
+#title {
   position: absolute;
-  bottom: 24px;
+  top: 14px;
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.35em;
+  color: rgba(255,255,255,0.55);
+}
+
+/* Result */
+#result {
+  position: absolute;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   padding: 10px 18px;
-  border-radius: 14px;
-  background: rgba(0,0,0,0.55);
+  border-radius: 16px;
+  background: rgba(15,23,42,0.6);
   color: white;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
 </style>
 </head>
@@ -41,23 +64,29 @@ body {
 <body>
 
 <div id="camera"></div>
-<div id="label">Loading…</div>
+
+<div id="hud">
+  <div id="title">AI • VISION</div>
+  <div id="result">Loading…</div>
+</div>
 
 <script>
-const modelURL = "https://teachablemachine.withgoogle.com/models/S9q_dztT1/";
+const MODEL_URL = "https://teachablemachine.withgoogle.com/models/S9q_dztT1/";
 
 let model, webcam;
-let lastSent = "";
+let lastClass = "";
 
 async function init() {
   model = await tmImage.load(
-    modelURL + "model.json",
-    modelURL + "metadata.json"
+    MODEL_URL + "model.json",
+    MODEL_URL + "metadata.json"
   );
 
-  // BACK CAMERA
+  // Force BACK CAMERA
   webcam = new tmImage.Webcam(400, 300, false);
-  await webcam.setup();
+  await webcam.setup({
+    facingMode: { exact: "environment" }
+  });
   await webcam.play();
 
   document.getElementById("camera").appendChild(webcam.canvas);
@@ -67,18 +96,16 @@ async function init() {
 async function loop() {
   webcam.update();
   await predict();
-  setTimeout(() => requestAnimationFrame(loop), 800);
+  setTimeout(() => requestAnimationFrame(loop), 700);
 }
 
 async function predict() {
-  const preds = await model.predict(webcam.canvas);
-  const best = preds.reduce((a,b)=>a.probability>b.probability?a:b);
+  const predictions = await model.predict(webcam.canvas);
+  const best = predictions.reduce((a,b)=>a.probability>b.probability?a:b);
 
-  document.getElementById("label").innerText = best.className;
-
-  if (window.AppInventor && best.className !== lastSent) {
-    window.AppInventor.setWebViewString(best.className);
-    lastSent = best.className;
+  if (best.className !== lastClass) {
+    document.getElementById("result").innerText = best.className;
+    lastClass = best.className;
   }
 }
 
