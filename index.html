@@ -2,112 +2,38 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>AI • VISION</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
 <style>
-:root {
-  --glow: #7c7cff;
-  --bg: #020617;
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", Inter, sans-serif;
-}
-
 body {
-  background: radial-gradient(circle at top, #0f172a, #020617 70%);
-  color: white;
-  height: 100vh;
+  margin: 0;
+  background: black;
   overflow: hidden;
+  font-family: system-ui, sans-serif;
 }
 
+/* Camera */
 #camera canvas {
   width: 100vw;
   height: 100vh;
   object-fit: cover;
-  filter: contrast(1.05) saturate(1.15);
 }
 
-/* GLASS HUD */
-.hud {
+/* Lightweight HUD */
+#label {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-/* TOP TITLE */
-.title {
-  position: absolute;
-  top: 18px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 13px;
-  letter-spacing: 0.3em;
-  opacity: 0.6;
-}
-
-/* PREDICTION CORE */
-.core {
-  position: absolute;
-  bottom: 90px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,124,255,0.25), transparent 65%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: pulse 2.5s infinite ease-in-out;
-}
-
-.core::before {
-  content: "";
-  position: absolute;
-  inset: -18px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,124,255,0.2), transparent 70%);
-  filter: blur(25px);
-}
-
-.label {
-  width: 90px;
-  height: 90px;
-  border-radius: 50%;
-  background: rgba(2,6,23,0.9);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 14px;
+  background: rgba(0,0,0,0.55);
+  color: white;
+  font-size: 16px;
   font-weight: 600;
-  text-align: center;
-  padding: 10px;
-  box-shadow: 0 0 25px rgba(124,124,255,0.45);
-}
-
-/* FOOTER */
-.footer {
-  position: absolute;
-  bottom: 20px;
-  width: 100%;
-  text-align: center;
-  font-size: 10px;
-  opacity: 0.35;
-}
-
-/* ANIMATIONS */
-@keyframes pulse {
-  0%,100% { transform: translateX(-50%) scale(1); }
-  50% { transform: translateX(-50%) scale(1.08); }
+  letter-spacing: 0.04em;
 }
 </style>
 </head>
@@ -115,23 +41,13 @@ body {
 <body>
 
 <div id="camera"></div>
-
-<div class="hud">
-  <div class="title">AI • VISION</div>
-
-  <div class="core" id="core">
-    <div class="label" id="label">LOADING</div>
-  </div>
-
-  <div class="footer">Teachable Machine • Neural Vision</div>
-</div>
+<div id="label">Loading…</div>
 
 <script>
 const modelURL = "https://teachablemachine.withgoogle.com/models/YOUR_MODEL_URL_HERE/";
 
 let model, webcam;
-let stableClass = "";
-let memory = [];
+let lastSent = "";
 
 async function init() {
   model = await tmImage.load(
@@ -139,7 +55,8 @@ async function init() {
     modelURL + "metadata.json"
   );
 
-  webcam = new tmImage.Webcam(400, 300, false); // BACK CAMERA
+  // BACK CAMERA
+  webcam = new tmImage.Webcam(400, 300, false);
   await webcam.setup();
   await webcam.play();
 
@@ -150,31 +67,19 @@ async function init() {
 async function loop() {
   webcam.update();
   await predict();
-  setTimeout(() => requestAnimationFrame(loop), 650);
+  setTimeout(() => requestAnimationFrame(loop), 800);
 }
 
 async function predict() {
   const preds = await model.predict(webcam.canvas);
   const best = preds.reduce((a,b)=>a.probability>b.probability?a:b);
 
-  memory.push(best.className);
-  if (memory.length > 6) memory.shift();
+  document.getElementById("label").innerText = best.className;
 
-  const finalClass = mostCommon(memory);
-
-  document.getElementById("label").innerText = finalClass;
-
-  if (window.AppInventor && finalClass !== stableClass) {
-    window.AppInventor.setWebViewString(finalClass);
-    stableClass = finalClass;
+  if (window.AppInventor && best.className !== lastSent) {
+    window.AppInventor.setWebViewString(best.className);
+    lastSent = best.className;
   }
-}
-
-function mostCommon(arr) {
-  return arr.sort((a,b)=>
-    arr.filter(v=>v===a).length -
-    arr.filter(v=>v===b).length
-  ).pop();
 }
 
 init();
