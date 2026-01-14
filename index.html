@@ -1,124 +1,93 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Roboflow Live Vision</title>
+<title>Soil AI Farmer Assistant</title>
 
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  background: black;
-  overflow: hidden;
-  font-family: system-ui;
-}
-
-video {
-  width: 100vw;
-  height: 100vh;
-  object-fit: cover;
-}
-
-#result {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px 18px;
-  background: rgba(0,0,0,0.65);
-  color: white;
-  border-radius: 14px;
-  font-size: 16px;
-  font-weight: 600;
-}
+body { margin:0; background:black; font-family:system-ui; overflow:hidden;}
+video { width:100vw; height:100vh; object-fit:cover; }
+#info { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+        background: rgba(0,0,0,0.6); color:white; padding:12px 20px;
+        border-radius:16px; font-size:16px; font-weight:600; text-align:center;}
 </style>
 </head>
 
 <body>
-
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas" width="640" height="640" style="display:none"></canvas>
-<div id="result">Starting camera…</div>
+<div id="info">Starting AI…</div>
 
 <script>
-const WORKFLOW_URL =
-  "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
-
-const API_KEY = "CxxhkxfjWLeZydDtSjFd"; // ← your key (used as requested)
+const WORKFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
+const API_KEY = "CxxhkxfjWLeZydDtSjFd"; // 🔒 regenerate later
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-
+const info = document.getElementById("info");
 let busy = false;
 
-async function init() {
-  // Force BACK CAMERA
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: "environment",
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
-  });
+// Soil → Crop mapping
+const cropSuggestions = {
+  "laterite soil": "Cashew, Coffee, Coconut",
+  "alluvial soil": "Rice, Wheat, Sugarcane",
+  "red soil": "Cotton, Groundnut, Millets",
+  "black soil": "Cotton, Soybean, Sunflower"
+};
 
+async function init() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:"environment", width:{ideal:1280}, height:{ideal:720} },
+    audio:false
+  });
   video.srcObject = stream;
-  video.onloadedmetadata = () => {
+  video.onloadedmetadata = ()=> {
     video.play();
-    document.getElementById("result").innerText = "Running AI…";
-    setInterval(runInference, 500); // ✅ every 0.5 seconds
+    setInterval(runInference, 500); // every 0.5s
   };
 }
 
 async function runInference() {
-  if (busy) return;
-  busy = true;
+  if(busy) return;
+  busy=true;
 
-  // Draw frame to canvas (small = fast)
-  ctx.drawImage(video, 0, 0, 640, 640);
+  ctx.drawImage(video,0,0,640,640);
+  const imageBase64 = canvas.toDataURL("image/jpeg",0.7).split(",")[1];
 
-  // Convert frame to base64
-  const imageBase64 = canvas
-    .toDataURL("image/jpeg", 0.7)
-    .split(",")[1];
-
-  try {
-    const response = await fetch(WORKFLOW_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: API_KEY,
-        inputs: {
-          image: {
-            type: "base64",
-            value: imageBase64
-          }
-        }
+  try{
+    const res = await fetch(WORKFLOW_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        api_key:API_KEY,
+        inputs:{ image:{ type:"base64", value:imageBase64 } }
       })
     });
 
-    const data = await response.json();
+    const data = await res.json();
 
-    // BASIC OUTPUT (safe for any workflow)
-    if (data.outputs && data.outputs.length > 0) {
-      document.getElementById("result").innerText =
-        JSON.stringify(data.outputs[0]);
+    if(data.outputs && data.outputs.length>0 && data.outputs[0].predictions && data.outputs[0].predictions.length>0){
+      const soilLabel = data.outputs[0].predictions[0].class.toLowerCase();
+      const crop = cropSuggestions[soilLabel] || "No suggestion";
+      const now = new Date();
+      const date = now.toLocaleDateString();
+      const time = now.toLocaleTimeString();
+
+      info.innerText = `Soil: ${soilLabel}\nDate: ${date}\nTime: ${time}\nSuggested Crop: ${crop}`;
     } else {
-      document.getElementById("result").innerText = "No detection";
+      info.innerText = "No soil detected";
     }
 
-  } catch (err) {
-    document.getElementById("result").innerText = "Inference error";
+  } catch(e){
+    info.innerText="AI Error";
   }
 
-  busy = false;
+  busy=false;
 }
 
 init();
 </script>
-
 </body>
 </html>
