@@ -1,204 +1,248 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>AI Soil → Crop Advisor</title>
+<meta charset="UTF-8">
+<title>AI Soil → Crop Advisor (Roboflow)</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<style>
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #0b0f14;
+    color: white;
+    text-align: center;
+  }
 
-  <style>
-    body {
-      margin: 0;
-      background: #0b0f14;
-      color: white;
-      font-family: system-ui;
-      text-align: center;
-    }
+  video {
+    width: 100vw;
+    height: 65vh;
+    object-fit: cover;
+    border-bottom: 2px solid #00ff88;
+  }
 
-    #camera {
-      width: 100vw;
-      height: 70vh;
-      object-fit: cover;
-      border-bottom: 2px solid #00ff88;
-    }
+  button {
+    background: #00ff88;
+    border: none;
+    padding: 14px 22px;
+    font-size: 1.1em;
+    border-radius: 12px;
+    margin: 10px;
+    cursor: pointer;
+  }
 
-    #result {
-      margin: 10px;
-      font-size: 1.2em;
-    }
+  #result {
+    margin: 10px;
+    font-size: 1.2em;
+  }
 
-    button {
-      background: #00ff88;
-      border: none;
-      padding: 15px 25px;
-      font-size: 1.1em;
-      border-radius: 12px;
-      cursor: pointer;
-      margin: 10px;
-    }
-
-    #recommendation {
-      margin: 15px;
-      text-align: left;
-      max-width: 500px;
-      margin-inline: auto;
-      background: #111827;
-      padding: 15px;
-      border-radius: 12px;
-    }
-  </style>
+  #recommendation {
+    margin: 15px auto;
+    max-width: 500px;
+    background: #111827;
+    padding: 15px;
+    border-radius: 12px;
+    text-align: left;
+  }
+</style>
 </head>
 
 <body>
 
-  <video id="camera" autoplay playsinline></video>
-  <div id="result">Loading model…</div>
+<video id="camera" autoplay playsinline></video>
+<canvas id="rfCanvas" width="416" height="416" style="display:none;"></canvas>
 
-  <button id="lockBtn">🔒 Lock Soil</button>
+<div id="result">Starting camera…</div>
+<button id="lockBtn">🔒 Lock Soil</button>
 
-  <div id="recommendation"></div>
+<div id="recommendation"></div>
 
 <script>
-  const MODEL_URL = "https://teachablemachine.withgoogle.com/models/S9q_dztT1/";
+/* ================== CONFIG ================== */
 
-  let model, webcamStream;
-  let isLocked = false;
-  let lockedSoil = null;
-  let lastInferenceTime = 0;
-  const INFERENCE_INTERVAL = 500; // 0.5s
-  let latestSoil = null;
+const ROBOFLOW_URL =
+  "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 
-  const cropRules = {
-    laterite: {
-      Monsoon: ["Rice","Sugarcane","Banana","Coconut","Cashew","Ginger","Turmeric"],
-      Summer: ["Groundnut","Millets","Sweet Potato"],
-      Winter: ["Pulses","Vegetables"]
-    },
-    red: {
-      Monsoon: ["Cotton","Groundnut","Maize","Millets","Pigeon Pea"],
-      Summer: ["Sorghum","Pearl Millet"],
-      Winter: ["Chickpea","Lentils"]
-    },
-    alluvial: {
-      Monsoon: ["Rice","Sugarcane","Jute","Maize"],
-      Winter: ["Wheat","Mustard","Potato"],
-      Summer: ["Vegetables"]
-    },
-    black: {
-      Monsoon: ["Cotton","Soybean"],
-      Winter: ["Wheat","Chickpea"],
-      Summer: ["Sunflower"]
-    },
-    arid: {
-      Monsoon: ["Bajra","Guar","Cluster Beans"],
-      Summer: ["Millets"],
-      Winter: ["Mustard"]
-    },
-    yellow: {
-      Monsoon: ["Rice","Maize"],
-      Winter: ["Pulses"],
-      Summer: ["Vegetables"]
-    },
-    mountain: {
-      Summer: ["Apple","Barley","Potato"],
-      Monsoon: ["Maize"],
-      Winter: ["Peas"]
-    }
+const ROBOFLOW_API_KEY = "CxxhkxfjWLeZydDtSjFd";
+
+const INFERENCE_INTERVAL = 500; // 0.5 seconds
+
+/* ================== STATE ================== */
+
+let isInferencing = false;
+let isLocked = false;
+let latestSoil = null;
+let lockedSoil = null;
+
+/* ================== CROP RULES ================== */
+
+const cropRules = {
+  laterite: {
+    Monsoon: ["Rice","Sugarcane","Banana","Coconut","Cashew","Ginger","Turmeric"],
+    Summer: ["Groundnut","Millets","Sweet Potato"],
+    Winter: ["Pulses","Vegetables"]
+  },
+  red: {
+    Monsoon: ["Cotton","Groundnut","Maize","Millets","Pigeon Pea"],
+    Summer: ["Sorghum","Pearl Millet"],
+    Winter: ["Chickpea","Lentils"]
+  },
+  alluvial: {
+    Monsoon: ["Rice","Sugarcane","Jute","Maize"],
+    Winter: ["Wheat","Mustard","Potato"],
+    Summer: ["Vegetables"]
+  },
+  black: {
+    Monsoon: ["Cotton","Soybean"],
+    Winter: ["Wheat","Chickpea"],
+    Summer: ["Sunflower"]
+  },
+  arid: {
+    Monsoon: ["Bajra","Guar","Cluster Beans"],
+    Summer: ["Millets"],
+    Winter: ["Mustard"]
+  },
+  yellow: {
+    Monsoon: ["Rice","Maize"],
+    Winter: ["Pulses"],
+    Summer: ["Vegetables"]
+  },
+  mountain: {
+    Summer: ["Apple","Barley","Potato"],
+    Monsoon: ["Maize"],
+    Winter: ["Peas"]
+  }
+};
+
+/* ================== CAMERA ================== */
+
+async function initCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { exact: "environment" } },
+    audio: false
+  });
+
+  const video = document.getElementById("camera");
+  video.srcObject = stream;
+
+  video.onloadeddata = () => {
+    document.getElementById("result").innerText =
+      "Scanning soil… hold steady";
   };
+}
 
-  async function init() {
-    model = await tmImage.load(
-      MODEL_URL + "model.json",
-      MODEL_URL + "metadata.json"
-    );
+/* ================== FRAME CAPTURE ================== */
 
-    webcamStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: "environment" } },
-      audio: false
+function captureFrame() {
+  const video = document.getElementById("camera");
+  const canvas = document.getElementById("rfCanvas");
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.7);
+}
+
+/* ================== ROBOFLOW INFERENCE ================== */
+
+async function runRoboflowInference() {
+  if (isInferencing || isLocked) return;
+
+  isInferencing = true;
+
+  try {
+    const imageBase64 = captureFrame();
+
+    const response = await fetch(ROBOFLOW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: ROBOFLOW_API_KEY,
+        inputs: {
+          image: {
+            type: "base64",
+            value: imageBase64.split(",")[1]
+          }
+        }
+      })
     });
 
-    const video = document.getElementById("camera");
-    video.srcObject = webcamStream;
+    const data = await response.json();
 
-    video.onloadeddata = () => {
-      document.getElementById("result").innerText = "Scanning soil…";
-      predictLoop();
-    };
-  }
+    const prediction =
+      data.outputs?.[0]?.predictions?.[0];
 
-  async function predictLoop() {
-    if (!model || isLocked) {
-      requestAnimationFrame(predictLoop);
+    if (!prediction) {
+      document.getElementById("result").innerText =
+        "Hold steady… detecting soil";
       return;
     }
 
-    const now = Date.now();
-    if (now - lastInferenceTime < INFERENCE_INTERVAL) {
-      requestAnimationFrame(predictLoop);
-      return;
-    }
-    lastInferenceTime = now;
+    latestSoil = prediction.class.toLowerCase();
 
-    try {
-      const prediction = await model.predict(document.getElementById("camera"));
-      const best = prediction.reduce((a,b)=>a.probability>b.probability?a:b);
+    document.getElementById("result").innerText =
+      `Detected: ${prediction.class} (${Math.round(prediction.confidence * 100)}%)`;
 
-      if (best.probability > 0.7) {
-        latestSoil = best.className.toLowerCase();
-        document.getElementById("result").innerText =
-          `Detected: ${best.className}`;
-      } else {
-        document.getElementById("result").innerText =
-          "Hold steady… detecting soil";
-      }
-    } catch {}
-
-    requestAnimationFrame(predictLoop);
+  } catch (e) {
+    console.warn("Inference skipped safely");
+  } finally {
+    isInferencing = false;
   }
+}
 
-  function getSeason() {
-    const m = new Date().getMonth() + 1;
-    if (m >= 6 && m <= 9) return "Monsoon";
-    if (m >= 10 || m <= 1) return "Winter";
-    return "Summer";
-  }
+/* ================== LOCATION + SEASON ================== */
 
-  function getLocation() {
-    return new Promise(res => {
-      navigator.geolocation.getCurrentPosition(p => {
-        res({lat:p.coords.latitude, lon:p.coords.longitude});
-      });
+function getSeason() {
+  const m = new Date().getMonth() + 1;
+  if (m >= 6 && m <= 9) return "Monsoon";
+  if (m >= 10 || m <= 1) return "Winter";
+  return "Summer";
+}
+
+function getLocation() {
+  return new Promise(res => {
+    navigator.geolocation.getCurrentPosition(p => {
+      res({ lat: p.coords.latitude, lon: p.coords.longitude });
     });
+  });
+}
+
+/* ================== FINAL LOGIC ================== */
+
+async function runCropLogic(soil) {
+  const loc = await getLocation();
+  const season = getSeason();
+  const crops = cropRules[soil]?.[season] || ["Millets (low cost fallback)"];
+
+  document.getElementById("recommendation").innerHTML = `
+    <h3>🌱 Crop Recommendation</h3>
+    <p><b>Soil:</b> ${soil}</p>
+    <p><b>Season:</b> ${season}</p>
+    <p><b>Date & Time:</b> ${new Date().toLocaleString()}</p>
+    <ul>${crops.map(c => `<li>${c}</li>`).join("")}</ul>
+  `;
+}
+
+/* ================== LOCK BUTTON ================== */
+
+document.getElementById("lockBtn").onclick = () => {
+  if (!latestSoil) {
+    alert("No soil detected yet");
+    return;
   }
 
-  async function runCropLogic(soil) {
-    const loc = await getLocation();
-    const season = getSeason();
-    const crops = cropRules[soil]?.[season] || ["Millets (low cost fallback)"];
+  isLocked = true;
+  lockedSoil = latestSoil;
 
-    document.getElementById("recommendation").innerHTML = `
-      <h3>🌱 Recommendation</h3>
-      <p><b>Soil:</b> ${soil}</p>
-      <p><b>Season:</b> ${season}</p>
-      <p><b>Date:</b> ${new Date().toLocaleString()}</p>
-      <ul>${crops.map(c=>`<li>${c}</li>`).join("")}</ul>
-    `;
-  }
+  document.getElementById("result").innerText =
+    `Soil Locked: ${lockedSoil}`;
 
-  document.getElementById("lockBtn").onclick = () => {
-    if (!latestSoil) {
-      alert("No soil detected yet");
-      return;
-    }
-    isLocked = true;
-    lockedSoil = latestSoil;
-    document.getElementById("result").innerText = `Soil Locked: ${lockedSoil}`;
-    runCropLogic(lockedSoil);
-  };
+  runCropLogic(lockedSoil);
+};
 
-  init();
+/* ================== START ================== */
+
+initCamera();
+setInterval(runRoboflowInference, INFERENCE_INTERVAL);
+
 </script>
-
 </body>
 </html>
