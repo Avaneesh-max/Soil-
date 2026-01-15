@@ -206,10 +206,10 @@ const weather = await getWeather();
 setTimeout(() => {
 const season = getSeason();
 
-// Base crops
+// 1️⃣ Base crops for soil + season
 let crops = [...(seasonalCrops[season][lastSoil] || [])];
 
-// Weather-based tweaks
+// 2️⃣ Weather-based tweaks
 if(weather){
 if(weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
 if(weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
@@ -217,13 +217,18 @@ if(weather.temp > 35) crops.push("Heat-tolerant crop");
 if(weather.temp < 15) crops.push("Cold-tolerant crop");
 }
 
-// Ensure 2–5 crops
+// 3️⃣ Ensure 2–5 crops: randomly pick from base crops if needed
 while(crops.length < 2){
-crops.push("Extra crop");
+crops.push(crops[Math.floor(Math.random()*crops.length)]);
 }
+
+// 4️⃣ Shuffle for variety
+crops = crops.sort(()=>0.5-Math.random());
+
+// 5️⃣ Limit to 5 crops max
 if(crops.length > 5) crops = crops.slice(0,5);
 
-// Show crops
+// 6️⃣ Display crops
 soilLabel.innerText = `${season.toUpperCase()} CROPS`;
 crops.forEach(c=>{
 const span = document.createElement("span");
@@ -231,6 +236,7 @@ span.className = "crop-badge";
 span.innerText = c;
 cropContainer.appendChild(span);
 });
+
 }, 1200);
 
 }catch(e){
