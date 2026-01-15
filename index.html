@@ -23,7 +23,7 @@ text-align:center}
 @keyframes pulse{50%{opacity:.3}}
 #soil-output{font-size:2rem;font-weight:900;margin:10px 0;color:var(--primary);text-transform:uppercase}
 .crop-container{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px}
-.crop-badge{border:1px solid var(--primary);color:var(--primary);padding:6px 14px;border-radius:12px;font-size:.8rem;font-weight:700}
+.crop-badge{border:1px solid var(--primary);color:var(--primary);padding:6px 14px;border-radius:12px;font-size:.8rem;font-weight:700;cursor:pointer}
 
 button{
 margin-top:10px;
@@ -36,11 +36,6 @@ cursor:pointer;
 
 .lock-btn{background:var(--primary);color:#000}
 .locked{background:#ff5555;color:white}
-
-.recommend-btn{
-background:#ffffff;
-color:#000;
-}
 
 canvas{display:none}
 </style>
@@ -61,8 +56,6 @@ canvas{display:none}
 <div id="crop-output" class="crop-container"></div>
 
 <button id="lockBtn" class="lock-btn">LOCK SOIL</button>
-<br>
-<button id="recBtn" class="recommend-btn">SEE RECOMMENDED CROPS</button>
 </div>
 </div>
 </div>
@@ -112,7 +105,6 @@ const canvas=document.getElementById("snapshot");
 const soilLabel=document.getElementById("soil-output");
 const cropContainer=document.getElementById("crop-output");
 const lockBtn=document.getElementById("lockBtn");
-const recBtn=document.getElementById("recBtn");
 
 /* ================= CAMERA ================= */
 navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
@@ -136,7 +128,8 @@ const soil=extractSoil(d);
 if(soil && soil!==lastSoil){
 lastSoil=soil;
 soilLabel.innerText=soil;
-cropContainer.innerHTML="";
+
+showPlaceholder();
 }
 }catch{}
 }
@@ -191,48 +184,60 @@ return {temp:d.main.temp,rain:d.rain?.["1h"]||0};
 }catch{return null;}
 }
 
-/* ================= RECOMMEND ================= */
-recBtn.onclick = async () => {
-    if (!lastSoil) {
-        soilLabel.innerText = "No soil detected";
-        cropContainer.innerHTML = "";
-        return;
-    }
+/* ================= SHOW PLACEHOLDER ================= */
+function showPlaceholder(){
+cropContainer.innerHTML = "";
+const placeholder = document.createElement("span");
+placeholder.className = "crop-badge";
+placeholder.innerText = "SEE RECOMMENDED CROPS";
+placeholder.onclick = recommendCrops; // Clickable
+cropContainer.appendChild(placeholder);
+}
 
-    soilLabel.innerText = "Analyzing season and weather...";
-    cropContainer.innerHTML = "";
+/* ================= RECOMMEND LOGIC ================= */
+async function recommendCrops(){
+cropContainer.innerHTML = "";
+soilLabel.innerText = "Analyzing season and weather...";
 
-    try {
-        await getLocation();
-        const weather = await getWeather();
+try{
+await getLocation();
+const weather = await getWeather();
 
-        setTimeout(() => {
-            const season = getSeason();
+setTimeout(() => {
+const season = getSeason();
 
-            // Base crops
-            let crops = [...(seasonalCrops[season][lastSoil] || [])];
+// Base crops
+let crops = [...(seasonalCrops[season][lastSoil] || [])];
 
-            // Add extra crops based on weather
-            if (weather) {
-                if (weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
-                if (weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
-                if (weather.temp > 35) crops.push("Heat-tolerant crop");
-                if (weather.temp < 15) crops.push("Cold-tolerant crop");
-            }
+// Weather-based tweaks
+if(weather){
+if(weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
+if(weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
+if(weather.temp > 35) crops.push("Heat-tolerant crop");
+if(weather.temp < 15) crops.push("Cold-tolerant crop");
+}
 
-            // Ensure 2-5 crops
-            if(crops.length < 2) crops.push("See Recommended Crops");
-            if(crops.length > 5) crops = crops.slice(0,5);
+// Ensure 2–5 crops
+while(crops.length < 2){
+crops.push("Extra crop");
+}
+if(crops.length > 5) crops = crops.slice(0,5);
 
-            soilLabel.innerText = `${season.toUpperCase()} CROPS`;
-            cropContainer.innerHTML = crops.map(c => `<span class="crop-badge">${c}</span>`).join("");
+// Show crops
+soilLabel.innerText = `${season.toUpperCase()} CROPS`;
+crops.forEach(c=>{
+const span = document.createElement("span");
+span.className = "crop-badge";
+span.innerText = c;
+cropContainer.appendChild(span);
+});
+}, 1200);
 
-        }, 1500);
-    } catch (e) {
-        soilLabel.innerText = "Weather unavailable";
-        cropContainer.innerHTML = "";
-    }
-};
+}catch(e){
+soilLabel.innerText = "Weather unavailable";
+cropContainer.innerHTML = "";
+}
+}
 </script>
 
 </body>
