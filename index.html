@@ -24,19 +24,9 @@ text-align:center}
 #soil-output{font-size:2rem;font-weight:900;margin:10px 0;color:var(--primary);text-transform:uppercase}
 .crop-container{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px}
 .crop-badge{border:1px solid var(--primary);color:var(--primary);padding:6px 14px;border-radius:12px;font-size:.8rem;font-weight:700;cursor:pointer}
-
-button{
-margin-top:10px;
-padding:10px 18px;
-border-radius:20px;
-border:none;
-font-weight:800;
-cursor:pointer;
-}
-
+button{margin-top:10px;padding:10px 18px;border-radius:20px;border:none;font-weight:800;cursor:pointer}
 .lock-btn{background:var(--primary);color:#000}
 .locked{background:#ff5555;color:white}
-
 canvas{display:none}
 </style>
 </head>
@@ -100,25 +90,24 @@ mountain:["Apple","Barley","Potato"]
 };
 
 /* ================= SOIL NORMALIZATION ================= */
-const soilMap = {
-"laterite": "laterite",
-"lateritic": "laterite",
-"red": "red",
-"redsoil": "red",
-"alluvial": "alluvial",
-"alluvialsoil": "alluvial",
-"black": "black",
-"blacksoil": "black",
-"arid": "arid",
-"aridsoil": "arid",
-"mountain": "mountain",
-"mountainsoil": "mountain"
-};
-
 function normalizeSoil(soil){
-  if(!soil) return null;
-  soil = soil.toLowerCase().trim().replace(/[\s\-_]/g,''); // remove spaces, hyphens, underscores
-  return soilMap[soil] || null;
+    if(!soil) return null;
+    soil = soil.toLowerCase().trim().replace(/[\s\-_]/g,''); // remove spaces, hyphens, underscores
+    const soilMap = {
+        "laterite": "laterite",
+        "lateritic": "laterite",
+        "red": "red",
+        "redsoil": "red",
+        "alluvial": "alluvial",
+        "alluvialsoil": "alluvial",
+        "black": "black",
+        "blacksoil": "black",
+        "arid": "arid",
+        "aridsoil": "arid",
+        "mountain": "mountain",
+        "mountainsoil": "mountain"
+    };
+    return soilMap[soil] || null;
 }
 
 /* ================= ELEMENTS ================= */
@@ -230,15 +219,20 @@ const weather=await getWeather();
 
 setTimeout(()=>{
 const season=getSeason();
-const baseCrops = [...(seasonalCrops[season][lastSoil]||[])].filter(Boolean); // remove undefined
 
-if(baseCrops.length===0){
-soilLabel.innerText="No crops available";
-cropContainer.innerHTML="";
-return;
+// Only use valid crops from mapping
+let baseCrops = [];
+if(lastSoil && seasonalCrops[season] && seasonalCrops[season][lastSoil]){
+    baseCrops = [...seasonalCrops[season][lastSoil]].filter(Boolean);
 }
 
-let crops=[...baseCrops];
+if(baseCrops.length===0){
+    soilLabel.innerText="No crops available";
+    cropContainer.innerHTML="";
+    return;
+}
+
+let crops = [...baseCrops];
 
 // Weather tweaks
 if(weather){
@@ -250,13 +244,17 @@ if(weather){
 
 // Ensure at least 2 crops
 while(crops.length<2){
-    crops.push(baseCrops[Math.floor(Math.random()*baseCrops.length)]);
+    if(baseCrops.length>0){
+        crops.push(baseCrops[Math.floor(Math.random()*baseCrops.length)]);
+    } else {
+        break;
+    }
 }
 
 // Shuffle & limit 5 crops
-crops=crops.sort(()=>0.5-Math.random()).slice(0,5);
+crops = crops.sort(()=>0.5-Math.random()).slice(0,5);
 
-// Display crops
+// Display only valid crops
 soilLabel.innerText=`${season.toUpperCase()} CROPS`;
 cropContainer.innerHTML="";
 crops.forEach(c=>{
