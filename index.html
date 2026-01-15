@@ -3,37 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgroAI | Live Roboflow Sync</title>
+<title>AgroAI | Smart Crop Advisor</title>
 
 <style>
 :root { --primary:#00ff88; --bg:#0b0f14; --glass:rgba(22,27,34,.9); }
 body{margin:0;font-family:system-ui;background:var(--bg);color:#fff;overflow:hidden}
 .viewport{width:100vw;height:100vh;background:#000;position:relative}
 video{width:100%;height:100%;object-fit:cover}
-.hud{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);width:90%;max-width:420px}
+.hud{position:absolute;bottom:25px;left:50%;transform:translateX(-50%);width:90%;max-width:420px}
 .glass-panel{
 background:var(--glass);
 backdrop-filter:blur(25px);
-padding:25px;
-border-radius:30px;
+padding:22px;
+border-radius:28px;
 border:1px solid rgba(255,255,255,.1);
 box-shadow:0 20px 50px rgba(0,0,0,.8);
 text-align:center}
 .status-dot{width:8px;height:8px;background:var(--primary);border-radius:50%;display:inline-block;margin-right:8px;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
-#soil-output{font-size:2.1rem;font-weight:900;margin:10px 0;color:var(--primary);text-transform:uppercase}
-.crop-container{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+#soil-output{font-size:2rem;font-weight:900;margin:10px 0;color:var(--primary);text-transform:uppercase}
+.crop-container{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px}
 .crop-badge{border:1px solid var(--primary);color:var(--primary);padding:6px 14px;border-radius:12px;font-size:.8rem;font-weight:700}
-.lock-btn{
-margin-top:12px;
+
+button{
+margin-top:10px;
 padding:10px 18px;
 border-radius:20px;
 border:none;
 font-weight:800;
 cursor:pointer;
-background:var(--primary);
-color:#000}
+}
+
+.lock-btn{background:var(--primary);color:#000}
 .locked{background:#ff5555;color:white}
+
+.recommend-btn{
+background:#ffffff;
+color:#000;
+}
+
 canvas{display:none}
 </style>
 </head>
@@ -53,6 +61,8 @@ canvas{display:none}
 <div id="crop-output" class="crop-container"></div>
 
 <button id="lockBtn" class="lock-btn">LOCK SOIL</button>
+<br>
+<button id="recBtn" class="recommend-btn">RECOMMEND CROPS</button>
 </div>
 </div>
 </div>
@@ -64,89 +74,115 @@ canvas{display:none}
 const API_KEY = "CxxhkxfjWLeZydDtSjFd";
 const WORKFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 
-/* ================= ELEMENTS ================= */
-const video = document.getElementById("camera");
-const canvas = document.getElementById("snapshot");
-const soilLabel = document.getElementById("soil-output");
-const cropContainer = document.getElementById("crop-output");
-const lockBtn = document.getElementById("lockBtn");
-
 /* ================= STATE ================= */
-let locked = false;
-let lockedSoil = null;
-let lastSoil = null;
+let locked=false, lastSoil=null;
 
 /* ================= CROPS ================= */
-const cropRules = {
-laterite:["Cashew","Coffee","Tea","Rubber"],
-red:["Cotton","Maize","Groundnut","Millets"],
-alluvial:["Rice","Wheat","Sugarcane","Jute"],
-black:["Cotton","Soybean","Sunflower","Tobacco"],
-arid:["Bajra","Millets","Dates"],
-mountain:["Apple","Barley","Potato"]
+const seasonalCrops = {
+summer:{
+laterite:["Cashew","Coffee"],
+red:["Maize","Groundnut"],
+black:["Cotton","Sunflower"],
+alluvial:["Rice","Sugarcane"],
+arid:["Bajra"],
+mountain:["Potato"]
+},
+monsoon:{
+laterite:["Rice","Tea"],
+red:["Cotton","Millets"],
+black:["Soybean"],
+alluvial:["Rice","Jute"],
+arid:["Millets"],
+mountain:["Barley"]
+},
+winter:{
+laterite:["Vegetables"],
+red:["Wheat","Gram"],
+black:["Wheat"],
+alluvial:["Wheat","Mustard"],
+arid:["Mustard"],
+mountain:["Apple"]
+}
 };
 
+/* ================= ELEMENTS ================= */
+const video=document.getElementById("camera");
+const canvas=document.getElementById("snapshot");
+const soilLabel=document.getElementById("soil-output");
+const cropContainer=document.getElementById("crop-output");
+const lockBtn=document.getElementById("lockBtn");
+const recBtn=document.getElementById("recBtn");
+
 /* ================= CAMERA ================= */
-async function init(){
-const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-video.srcObject = stream;
-setInterval(analyzeFrame,900);
-}
-init();
+navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+.then(s=>{video.srcObject=s;setInterval(analyzeFrame,900);});
 
 /* ================= AI ================= */
 async function analyzeFrame(){
 if(locked) return;
-
-const ctx = canvas.getContext("2d");
+const ctx=canvas.getContext("2d");
 ctx.drawImage(video,0,0,416,416);
-const img = canvas.toDataURL("image/jpeg",0.45).split(",")[1];
+const img=canvas.toDataURL("image/jpeg",0.45).split(",")[1];
 
 try{
-const res = await fetch(WORKFLOW_URL,{
+const r=await fetch(WORKFLOW_URL,{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({
-api_key:API_KEY,
-inputs:{image:{type:"base64",value:img}}
-})
+body:JSON.stringify({api_key:API_KEY,inputs:{image:{type:"base64",value:img}}})
 });
-
-const data = await res.json();
-const soil = extractSoil(data);
+const d=await r.json();
+const soil=extractSoil(d);
 if(soil && soil!==lastSoil){
-lastSoil = soil;
-updateUI(soil);
+lastSoil=soil;
+soilLabel.innerText=soil;
+cropContainer.innerHTML="";
 }
 }catch{}
 }
 
-/* ================= PARSER ================= */
-function extractSoil(data){
+function extractSoil(d){
 try{
-const out = data.outputs?.[0];
-for(const key in out){
-if(out[key]?.predictions?.length){
-return out[key].predictions[0].class.toLowerCase();
+const o=d.outputs?.[0];
+for(const k in o){
+if(o[k]?.predictions?.length){
+return o[k].predictions[0].class.toLowerCase();
 }
 }
 }catch{}
 return null;
 }
 
-/* ================= UI ================= */
-function updateUI(soil){
-soilLabel.innerText = soil;
-const crops = cropRules[soil] || ["Analyzing…"];
-cropContainer.innerHTML = crops.map(c=>`<span class="crop-badge">${c}</span>`).join("");
+/* ================= LOCK ================= */
+lockBtn.onclick=()=>{
+locked=!locked;
+lockBtn.classList.toggle("locked",locked);
+lockBtn.innerText=locked?"UNLOCK SOIL":"LOCK SOIL";
+};
+
+/* ================= SEASON ================= */
+function getSeason(){
+const m=new Date().getMonth()+1;
+if(m>=3 && m<=6) return "summer";
+if(m>=7 && m<=10) return "monsoon";
+return "winter";
 }
 
-/* ================= LOCK ================= */
-lockBtn.onclick = ()=>{
-locked = !locked;
-lockBtn.classList.toggle("locked",locked);
-lockBtn.innerText = locked ? "UNLOCK SOIL" : "LOCK SOIL";
-if(locked) lockedSoil = lastSoil;
+/* ================= RECOMMEND ================= */
+recBtn.onclick=()=>{
+if(!lastSoil){
+soilLabel.innerText="No soil detected";
+return;
+}
+
+soilLabel.innerText="Analyzing season...";
+cropContainer.innerHTML="";
+
+setTimeout(()=>{
+const season=getSeason();
+soilLabel.innerText=`${season.toUpperCase()} CROPS`;
+const crops=seasonalCrops[season][lastSoil] || ["Consult Expert"];
+cropContainer.innerHTML=crops.map(c=>`<span class="crop-badge">${c}</span>`).join("");
+},1500);
 };
 </script>
 
