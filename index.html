@@ -3,133 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgroAI | Auto-Sense</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <title>AgroAI | Live Roboflow Sync</title>
     <style>
-        :root { --primary: #00ff88; --bg: #0b0f14; --glass: rgba(22, 27, 34, 0.85); }
+        :root { --primary: #00ff88; --bg: #0b0f14; --glass: rgba(22, 27, 34, 0.9); }
         body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: white; overflow: hidden; }
 
-        /* Full Screen Camera */
         .viewport { position: relative; width: 100vw; height: 100vh; background: #000; }
         video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* HUD / UI Overlay */
         .hud {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 400px; z-index: 10;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 420px; z-index: 10;
         }
 
         .glass-panel {
-            background: var(--glass); backdrop-filter: blur(20px);
-            padding: 25px; border-radius: 32px; border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--glass); backdrop-filter: blur(25px);
+            padding: 25px; border-radius: 35px; border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 20px 50px rgba(0,0,0,0.8); text-align: center;
         }
 
-        .scanning-text {
-            font-size: 0.7rem; letter-spacing: 3px; color: var(--primary);
-            font-weight: 900; text-transform: uppercase; margin-bottom: 5px;
-            animation: blink 1.5s infinite;
+        .status-dot {
+            display: inline-block; width: 8px; height: 8px; background: var(--primary);
+            border-radius: 50%; margin-right: 8px; animation: pulse 1s infinite;
         }
 
-        @keyframes blink { 50% { opacity: 0.3; } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } }
 
         #soil-output { 
-            font-size: 2.5rem; font-weight: 900; margin: 0; 
-            text-transform: capitalize; transition: 0.2s;
-            background: linear-gradient(to bottom, #fff, #888);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-size: 2.2rem; font-weight: 900; margin: 10px 0; 
+            text-transform: uppercase; letter-spacing: 1px;
+            color: var(--primary);
         }
 
-        .crop-container { 
-            display: flex; flex-wrap: wrap; justify-content: center; 
-            gap: 10px; margin-top: 20px; min-height: 40px;
-        }
-
+        .crop-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 15px; }
         .crop-badge {
             background: rgba(0, 255, 136, 0.1); border: 1px solid var(--primary);
-            color: var(--primary); padding: 8px 16px; border-radius: 12px;
-            font-size: 0.85rem; font-weight: 700; animation: slideUp 0.3s ease-out;
+            color: var(--primary); padding: 6px 14px; border-radius: 12px;
+            font-size: 0.85rem; font-weight: 700;
         }
 
-        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Top Scanning Line */
-        .scanner-bar {
-            position: absolute; top: 0; width: 100%; height: 2px;
-            background: var(--primary); box-shadow: 0 0 15px var(--primary);
-            animation: sweep 3s ease-in-out infinite; z-index: 5;
-        }
-
-        @keyframes sweep { 0%, 100% { top: 10%; } 50% { top: 90%; } }
+        canvas { display: none; } /* Hidden canvas for frame capture */
     </style>
 </head>
 <body>
 
 <div class="viewport">
-    <video id="webcam" autoplay playsinline></video>
-    <div class="scanner-bar"></div>
-    
+    <video id="camera" autoplay playsinline></video>
     <div class="hud">
         <div class="glass-panel">
-            <div class="scanning-text" id="status">AI Live Analyzing</div>
-            <h1 id="soil-output">Scanning...</h1>
+            <div style="font-size: 0.7rem; letter-spacing: 2px; color: #8b949e;">
+                <span class="status-dot"></span>LIVE AI ANALYSIS
+            </div>
+            <h1 id="soil-output">Detecting...</h1>
             <div id="crop-output" class="crop-container"></div>
         </div>
     </div>
 </div>
 
+<canvas id="snapshot" width="416" height="416"></canvas>
+
 <script>
-    const video = document.getElementById('webcam');
+    /* --- CONFIG --- */
+    const API_KEY = "CxxhkxfjWLeZydDtSjFd";
+    const WORKFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
+    
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('snapshot');
     const soilLabel = document.getElementById('soil-output');
     const cropContainer = document.getElementById('crop-output');
-    let lastDetected = "";
 
     const cropRules = {
         laterite: ["Cashew", "Coffee", "Tea"],
         red: ["Cotton", "Wheat", "Maize"],
-        alluvial: ["Rice", "Wheat", "Sugarcane"],
+        alluvial: ["Rice", "Wheat", "Jute"],
         black: ["Cotton", "Soybean", "Tobacco"],
-        arid: ["Bajra", "Millets", "Guar"],
-        mountain: ["Apple", "Barley", "Potato"]
+        arid: ["Bajra", "Millets"],
+        mountain: ["Apple", "Barley"]
     };
 
-    async function startApp() {
-        // Init Camera
+    async function init() {
+        // Start Camera
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         video.srcObject = stream;
+        
+        // Start the continuous "Send to Roboflow" loop
+        setInterval(analyzeFrame, 600); 
+    }
 
-        // AI Loop (Simulated for Pure HTML Speed)
-        function autoAnalyze() {
-            // In your real version, this is where the TFJS model output goes
-            // We simulate a confidence-based auto-lock
-            const soils = Object.keys(cropRules);
-            const detected = soils[Math.floor(Math.random() * soils.length)]; 
+    async function analyzeFrame() {
+        // 1. Capture frame from video
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
 
-            if (detected !== lastDetected) {
-                lastDetected = detected;
-                updateUI(detected);
+        // 2. Send to Roboflow
+        try {
+            const response = await fetch(WORKFLOW_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    api_key: API_KEY,
+                    inputs: { image: { type: "base64", value: base64Image } }
+                })
+            });
+
+            const data = await response.json();
+            const prediction = data.outputs?.[0]?.predictions?.[0];
+
+            if (prediction) {
+                updateUI(prediction.class.toLowerCase());
             }
-            
-            // Re-runs every 3 seconds to avoid UI flickering while still being "instant"
-            setTimeout(autoAnalyze, 3000); 
+        } catch (err) {
+            console.error("Inference Error:", err);
         }
-        autoAnalyze();
     }
 
     function updateUI(soil) {
-        soilLabel.innerText = soil;
+        if (soilLabel.innerText.toLowerCase() === soil) return; // Don't flicker if same
         
-        // Clear and update crop badges automatically
-        cropContainer.innerHTML = '';
-        cropRules[soil].forEach(crop => {
-            const span = document.createElement('span');
-            span.className = 'crop-badge';
-            span.innerText = crop;
-            cropContainer.appendChild(span);
-        });
+        soilLabel.innerText = soil;
+        cropContainer.innerHTML = (cropRules[soil] || ["Scanning..."])
+            .map(c => `<span class="crop-badge">${c}</span>`).join('');
     }
 
-    startApp();
+    init();
 </script>
 </body>
 </html>
