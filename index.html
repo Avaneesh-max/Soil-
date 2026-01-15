@@ -102,18 +102,22 @@ mountain:["Apple","Barley","Potato"]
 /* ================= SOIL NORMALIZATION ================= */
 const soilMap = {
 "laterite": "laterite",
+"lateritic": "laterite",
 "red": "red",
+"redsoil": "red",
 "alluvial": "alluvial",
+"alluvialsoil": "alluvial",
 "black": "black",
+"blacksoil": "black",
 "arid": "arid",
+"aridsoil": "arid",
 "mountain": "mountain",
-"red soil": "red",
-"lateritic": "laterite"
+"mountainsoil": "mountain"
 };
 
 function normalizeSoil(soil){
   if(!soil) return null;
-  soil = soil.toLowerCase().trim();
+  soil = soil.toLowerCase().trim().replace(/[\s\-_]/g,''); // remove spaces, hyphens, underscores
   return soilMap[soil] || null;
 }
 
@@ -142,12 +146,15 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({api_key:RF_KEY,inputs:{image:{type:"base64",value:img}}})
 });
 const d=await r.json();
-let soil = normalizeSoil(extractSoil(d));
-if(soil && soil!==lastSoil){
+let rawSoil = extractSoil(d);
+let soil = normalizeSoil(rawSoil);
+if(soil){
 lastSoil=soil;
 soilLabel.innerText=soil;
-
 showPlaceholder();
+}else{
+soilLabel.innerText="Unknown soil";
+cropContainer.innerHTML="";
 }
 }catch{}
 }
@@ -214,59 +221,58 @@ cropContainer.appendChild(placeholder);
 
 /* ================= RECOMMEND LOGIC ================= */
 async function recommendCrops(){
-cropContainer.innerHTML = "";
-soilLabel.innerText = "Analyzing season and weather...";
+cropContainer.innerHTML="";
+soilLabel.innerText="Analyzing season and weather...";
 
 try{
 await getLocation();
-const weather = await getWeather();
+const weather=await getWeather();
 
-setTimeout(() => {
-const season = getSeason();
+setTimeout(()=>{
+const season=getSeason();
+const baseCrops = [...(seasonalCrops[season][lastSoil]||[])].filter(Boolean); // remove undefined
 
-// 1️⃣ Base crops for soil + season
-let baseCrops = [...(seasonalCrops[season][lastSoil] || [])];
-baseCrops = baseCrops.filter(Boolean); // remove any undefined
-
-if(baseCrops.length === 0){
-    soilLabel.innerText = "No crops available";
-    return;
+if(baseCrops.length===0){
+soilLabel.innerText="No crops available";
+cropContainer.innerHTML="";
+return;
 }
 
-// 2️⃣ Weather-based tweaks
-let crops = [...baseCrops];
+let crops=[...baseCrops];
+
+// Weather tweaks
 if(weather){
-    if(weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
-    if(weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
-    if(weather.temp > 35) crops.push("Heat-tolerant crop");
-    if(weather.temp < 15) crops.push("Cold-tolerant crop");
+    if(weather.rain<5 && lastSoil==="arid") crops.push("Drought-resistant millet");
+    if(weather.rain>20 && lastSoil==="alluvial") crops.push("Rice (high rainfall)");
+    if(weather.temp>35) crops.push("Heat-tolerant crop");
+    if(weather.temp<15) crops.push("Cold-tolerant crop");
 }
 
-// 3️⃣ Ensure at least 2 crops by randomly duplicating from base crops
-while(crops.length < 2){
+// Ensure at least 2 crops
+while(crops.length<2){
     crops.push(baseCrops[Math.floor(Math.random()*baseCrops.length)]);
 }
 
-// 4️⃣ Shuffle for variety
-crops = crops.sort(()=>0.5-Math.random());
+// Shuffle & limit 5 crops
+crops=crops.sort(()=>0.5-Math.random()).slice(0,5);
 
-// 5️⃣ Limit to 5 crops
-if(crops.length > 5) crops = crops.slice(0,5);
-
-// 6️⃣ Display crops
-soilLabel.innerText = `${season.toUpperCase()} CROPS`;
+// Display crops
+soilLabel.innerText=`${season.toUpperCase()} CROPS`;
+cropContainer.innerHTML="";
 crops.forEach(c=>{
-    const span = document.createElement("span");
-    span.className = "crop-badge";
-    span.innerText = c;
-    cropContainer.appendChild(span);
+    if(c){
+        const span=document.createElement("span");
+        span.className="crop-badge";
+        span.innerText=c;
+        cropContainer.appendChild(span);
+    }
 });
 
-}, 1200);
+},1200);
 
 }catch(e){
-soilLabel.innerText = "Weather unavailable";
-cropContainer.innerHTML = "";
+soilLabel.innerText="Weather unavailable";
+cropContainer.innerHTML="";
 }
 }
 </script>
