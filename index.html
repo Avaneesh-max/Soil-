@@ -99,6 +99,24 @@ mountain:["Apple","Barley","Potato"]
 }
 };
 
+/* ================= SOIL NORMALIZATION ================= */
+const soilMap = {
+"laterite": "laterite",
+"red": "red",
+"alluvial": "alluvial",
+"black": "black",
+"arid": "arid",
+"mountain": "mountain",
+"red soil": "red",
+"lateritic": "laterite"
+};
+
+function normalizeSoil(soil){
+  if(!soil) return null;
+  soil = soil.toLowerCase().trim();
+  return soilMap[soil] || null;
+}
+
 /* ================= ELEMENTS ================= */
 const video=document.getElementById("camera");
 const canvas=document.getElementById("snapshot");
@@ -124,7 +142,7 @@ headers:{"Content-Type":"application/json"},
 body:JSON.stringify({api_key:RF_KEY,inputs:{image:{type:"base64",value:img}}})
 });
 const d=await r.json();
-const soil=extractSoil(d);
+let soil = normalizeSoil(extractSoil(d));
 if(soil && soil!==lastSoil){
 lastSoil=soil;
 soilLabel.innerText=soil;
@@ -139,7 +157,7 @@ try{
 const o=d.outputs?.[0];
 for(const k in o){
 if(o[k]?.predictions?.length){
-return o[k].predictions[0].class.toLowerCase();
+return o[k].predictions[0].class;
 }
 }
 }catch{}
@@ -207,34 +225,41 @@ setTimeout(() => {
 const season = getSeason();
 
 // 1️⃣ Base crops for soil + season
-let crops = [...(seasonalCrops[season][lastSoil] || [])];
+let baseCrops = [...(seasonalCrops[season][lastSoil] || [])];
+baseCrops = baseCrops.filter(Boolean); // remove any undefined
 
-// 2️⃣ Weather-based tweaks
-if(weather){
-if(weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
-if(weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
-if(weather.temp > 35) crops.push("Heat-tolerant crop");
-if(weather.temp < 15) crops.push("Cold-tolerant crop");
+if(baseCrops.length === 0){
+    soilLabel.innerText = "No crops available";
+    return;
 }
 
-// 3️⃣ Ensure 2–5 crops: randomly pick from base crops if needed
+// 2️⃣ Weather-based tweaks
+let crops = [...baseCrops];
+if(weather){
+    if(weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
+    if(weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
+    if(weather.temp > 35) crops.push("Heat-tolerant crop");
+    if(weather.temp < 15) crops.push("Cold-tolerant crop");
+}
+
+// 3️⃣ Ensure at least 2 crops by randomly duplicating from base crops
 while(crops.length < 2){
-crops.push(crops[Math.floor(Math.random()*crops.length)]);
+    crops.push(baseCrops[Math.floor(Math.random()*baseCrops.length)]);
 }
 
 // 4️⃣ Shuffle for variety
 crops = crops.sort(()=>0.5-Math.random());
 
-// 5️⃣ Limit to 5 crops max
+// 5️⃣ Limit to 5 crops
 if(crops.length > 5) crops = crops.slice(0,5);
 
 // 6️⃣ Display crops
 soilLabel.innerText = `${season.toUpperCase()} CROPS`;
 crops.forEach(c=>{
-const span = document.createElement("span");
-span.className = "crop-badge";
-span.innerText = c;
-cropContainer.appendChild(span);
+    const span = document.createElement("span");
+    span.className = "crop-badge";
+    span.innerText = c;
+    cropContainer.appendChild(span);
 });
 
 }, 1200);
