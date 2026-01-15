@@ -1,248 +1,274 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>AI Soil → Crop Advisor (Roboflow)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgroAI | Soil Sense</title>
+    <style>
+        :root {
+            --primary: #00ff88;
+            --bg: #0d1117;
+            --card-bg: rgba(22, 27, 34, 0.8);
+            --text: #e6edf3;
+        }
 
-<style>
-  body {
-    margin: 0;
-    font-family: system-ui, sans-serif;
-    background: #0b0f14;
-    color: white;
-    text-align: center;
-  }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
 
-  video {
-    width: 100vw;
-    height: 65vh;
-    object-fit: cover;
-    border-bottom: 2px solid #00ff88;
-  }
+        /* Video Header */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            height: 45vh;
+            background: #000;
+            border-bottom: 2px solid var(--primary);
+            box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+        }
 
-  button {
-    background: #00ff88;
-    border: none;
-    padding: 14px 22px;
-    font-size: 1.1em;
-    border-radius: 12px;
-    margin: 10px;
-    cursor: pointer;
-  }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
 
-  #result {
-    margin: 10px;
-    font-size: 1.2em;
-  }
+        /* Scanning Animation */
+        .scanner-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            box-shadow: 0 0 15px var(--primary);
+            animation: scan 3s ease-in-out infinite;
+            z-index: 5;
+        }
 
-  #recommendation {
-    margin: 15px auto;
-    max-width: 500px;
-    background: #111827;
-    padding: 15px;
-    border-radius: 12px;
-    text-align: left;
-  }
-</style>
+        @keyframes scan {
+            0%, 100% { top: 0%; }
+            50% { top: 100%; }
+        }
+
+        /* Dashboard UI */
+        .container {
+            width: 90%;
+            max-width: 450px;
+            margin-top: -40px;
+            z-index: 10;
+            padding-bottom: 40px;
+        }
+
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .status-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #8b949e;
+            margin-bottom: 8px;
+        }
+
+        #soil-type {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+            display: block;
+            color: var(--primary);
+            transition: color 0.3s ease;
+        }
+
+        /* Buttons */
+        button {
+            width: 100%;
+            background: var(--primary);
+            color: #0b0f14;
+            border: none;
+            padding: 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        button:active { transform: scale(0.97); }
+        button:disabled { background: #30363d; color: #8b949e; }
+
+        /* Results Area */
+        #recommendation {
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .crop-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .crop-item {
+            background: rgba(0, 255, 136, 0.15);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: var(--primary);
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+        }
+
+        canvas { display: none; }
+    </style>
 </head>
-
 <body>
 
-<video id="camera" autoplay playsinline></video>
-<canvas id="rfCanvas" width="416" height="416" style="display:none;"></canvas>
+<div class="video-wrapper">
+    <video id="camera" autoplay playsinline></video>
+    <div class="scanner-line"></div>
+</div>
 
-<div id="result">Starting camera…</div>
-<button id="lockBtn">🔒 Lock Soil</button>
+<div class="container">
+    <div class="glass-card">
+        <div class="status-label" id="statusText">System Ready</div>
+        <span id="soil-type">Scanning...</span>
+        
+        <button id="lockBtn">
+            <span>🔒</span> Lock & Analyze Soil
+        </button>
 
-<div id="recommendation"></div>
+        <div id="recommendation"></div>
+    </div>
+</div>
+
+<canvas id="rfCanvas" width="416" height="416"></canvas>
 
 <script>
-/* ================== CONFIG ================== */
-
-const ROBOFLOW_URL =
-  "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
-
+/* ================== CONFIG & STATE ================== */
+const ROBOFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 const ROBOFLOW_API_KEY = "CxxhkxfjWLeZydDtSjFd";
-
-const INFERENCE_INTERVAL = 500; // 0.5 seconds
-
-/* ================== STATE ================== */
+const INFERENCE_INTERVAL = 600;
 
 let isInferencing = false;
 let isLocked = false;
 let latestSoil = null;
-let lockedSoil = null;
-
-/* ================== CROP RULES ================== */
 
 const cropRules = {
-  laterite: {
-    Monsoon: ["Rice","Sugarcane","Banana","Coconut","Cashew","Ginger","Turmeric"],
-    Summer: ["Groundnut","Millets","Sweet Potato"],
-    Winter: ["Pulses","Vegetables"]
-  },
-  red: {
-    Monsoon: ["Cotton","Groundnut","Maize","Millets","Pigeon Pea"],
-    Summer: ["Sorghum","Pearl Millet"],
-    Winter: ["Chickpea","Lentils"]
-  },
-  alluvial: {
-    Monsoon: ["Rice","Sugarcane","Jute","Maize"],
-    Winter: ["Wheat","Mustard","Potato"],
-    Summer: ["Vegetables"]
-  },
-  black: {
-    Monsoon: ["Cotton","Soybean"],
-    Winter: ["Wheat","Chickpea"],
-    Summer: ["Sunflower"]
-  },
-  arid: {
-    Monsoon: ["Bajra","Guar","Cluster Beans"],
-    Summer: ["Millets"],
-    Winter: ["Mustard"]
-  },
-  yellow: {
-    Monsoon: ["Rice","Maize"],
-    Winter: ["Pulses"],
-    Summer: ["Vegetables"]
-  },
-  mountain: {
-    Summer: ["Apple","Barley","Potato"],
-    Monsoon: ["Maize"],
-    Winter: ["Peas"]
-  }
+    laterite: { Monsoon: ["Rice","Sugarcane","Banana","Cashew"], Summer: ["Groundnut","Millets"], Winter: ["Pulses"] },
+    red: { Monsoon: ["Cotton","Maize","Pigeon Pea"], Summer: ["Sorghum"], Winter: ["Chickpea"] },
+    alluvial: { Monsoon: ["Rice","Jute"], Winter: ["Wheat","Mustard"], Summer: ["Vegetables"] },
+    black: { Monsoon: ["Cotton","Soybean"], Winter: ["Wheat"], Summer: ["Sunflower"] },
+    arid: { Monsoon: ["Bajra","Guar"], Summer: ["Millets"], Winter: ["Mustard"] },
+    yellow: { Monsoon: ["Rice","Maize"], Winter: ["Pulses"], Summer: ["Vegetables"] },
+    mountain: { Summer: ["Apple","Potato"], Monsoon: ["Maize"], Winter: ["Peas"] }
 };
 
-/* ================== CAMERA ================== */
+/* ================== CORE FUNCTIONS ================== */
 
 async function initCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { exact: "environment" } },
-    audio: false
-  });
-
-  const video = document.getElementById("camera");
-  video.srcObject = stream;
-
-  video.onloadeddata = () => {
-    document.getElementById("result").innerText =
-      "Scanning soil… hold steady";
-  };
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment" }, 
+            audio: false 
+        });
+        document.getElementById("camera").srcObject = stream;
+    } catch (err) {
+        document.getElementById("statusText").innerText = "Camera Error";
+        console.error(err);
+    }
 }
-
-/* ================== FRAME CAPTURE ================== */
 
 function captureFrame() {
-  const video = document.getElementById("camera");
-  const canvas = document.getElementById("rfCanvas");
-  const ctx = canvas.getContext("2d");
-
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.7);
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("rfCanvas");
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.7).split(",")[1];
 }
 
-/* ================== ROBOFLOW INFERENCE ================== */
+async function runInference() {
+    if (isInferencing || isLocked) return;
+    isInferencing = true;
 
-async function runRoboflowInference() {
-  if (isInferencing || isLocked) return;
+    try {
+        const response = await fetch(ROBOFLOW_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_key: ROBOFLOW_API_KEY,
+                inputs: { image: { type: "base64", value: captureFrame() } }
+            })
+        });
 
-  isInferencing = true;
+        const data = await response.json();
+        const prediction = data.outputs?.[0]?.predictions?.[0];
 
-  try {
-    const imageBase64 = captureFrame();
-
-    const response = await fetch(ROBOFLOW_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: ROBOFLOW_API_KEY,
-        inputs: {
-          image: {
-            type: "base64",
-            value: imageBase64.split(",")[1]
-          }
+        if (prediction) {
+            latestSoil = prediction.class.toLowerCase();
+            document.getElementById("soil-type").innerText = prediction.class;
+            updateSoilColor(latestSoil);
+            document.getElementById("statusText").innerText = `Detected (${Math.round(prediction.confidence * 100)}%)`;
         }
-      })
-    });
-
-    const data = await response.json();
-
-    const prediction =
-      data.outputs?.[0]?.predictions?.[0];
-
-    if (!prediction) {
-      document.getElementById("result").innerText =
-        "Hold steady… detecting soil";
-      return;
+    } catch (e) {
+        console.warn("Inference failed");
+    } finally {
+        isInferencing = false;
     }
-
-    latestSoil = prediction.class.toLowerCase();
-
-    document.getElementById("result").innerText =
-      `Detected: ${prediction.class} (${Math.round(prediction.confidence * 100)}%)`;
-
-  } catch (e) {
-    console.warn("Inference skipped safely");
-  } finally {
-    isInferencing = false;
-  }
 }
 
-/* ================== LOCATION + SEASON ================== */
+function updateSoilColor(soil) {
+    const colors = { red: "#ff4d4d", black: "#4a4a4a", alluvial: "#d4a373", arid: "#e9c46a", laterite: "#b07d62" };
+    document.getElementById("soil-type").style.color = colors[soil] || "#00ff88";
+}
 
 function getSeason() {
-  const m = new Date().getMonth() + 1;
-  if (m >= 6 && m <= 9) return "Monsoon";
-  if (m >= 10 || m <= 1) return "Winter";
-  return "Summer";
+    const m = new Date().getMonth() + 1;
+    if (m >= 6 && m <= 9) return "Monsoon";
+    if (m >= 10 || m <= 1) return "Winter";
+    return "Summer";
 }
-
-function getLocation() {
-  return new Promise(res => {
-    navigator.geolocation.getCurrentPosition(p => {
-      res({ lat: p.coords.latitude, lon: p.coords.longitude });
-    });
-  });
-}
-
-/* ================== FINAL LOGIC ================== */
-
-async function runCropLogic(soil) {
-  const loc = await getLocation();
-  const season = getSeason();
-  const crops = cropRules[soil]?.[season] || ["Millets (low cost fallback)"];
-
-  document.getElementById("recommendation").innerHTML = `
-    <h3>🌱 Crop Recommendation</h3>
-    <p><b>Soil:</b> ${soil}</p>
-    <p><b>Season:</b> ${season}</p>
-    <p><b>Date & Time:</b> ${new Date().toLocaleString()}</p>
-    <ul>${crops.map(c => `<li>${c}</li>`).join("")}</ul>
-  `;
-}
-
-/* ================== LOCK BUTTON ================== */
 
 document.getElementById("lockBtn").onclick = () => {
-  if (!latestSoil) {
-    alert("No soil detected yet");
-    return;
-  }
-
-  isLocked = true;
-  lockedSoil = latestSoil;
-
-  document.getElementById("result").innerText =
-    `Soil Locked: ${lockedSoil}`;
-
-  runCropLogic(lockedSoil);
+    if (!latestSoil) return alert("Please wait for detection");
+    
+    isLocked = true;
+    const season = getSeason();
+    const crops = cropRules[latestSoil]?.[season] || ["General Millets"];
+    
+    document.getElementById("statusText").innerText = "Analysis Complete";
+    document.getElementById("recommendation").innerHTML = `
+        <div style="margin-bottom:10px; font-weight:600;">Best for ${season} season:</div>
+        <ul class="crop-list">
+            ${crops.map(c => `<li class="crop-item">${c}</li>`).join("")}
+        </ul>
+        <button onclick="location.reload()" style="margin-top:20px; background:#30363d; color:white; padding:10px; font-size:0.8rem;">Reset Scan</button>
+    `;
+    document.getElementById("lockBtn").style.display = "none";
 };
 
 /* ================== START ================== */
-
 initCamera();
-setInterval(runRoboflowInference, INFERENCE_INTERVAL);
-
+setInterval(runInference, INFERENCE_INTERVAL);
 </script>
 </body>
 </html>
