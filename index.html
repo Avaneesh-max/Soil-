@@ -149,7 +149,7 @@ let rawSoil = extractSoil(d);
 let soil = normalizeSoil(rawSoil);
 if(soil){
     lastSoil = soil;
-    soilLabel.innerText = soilDisplayNames[soil] || soil; // Friendly display
+    soilLabel.innerText = soilDisplayNames[soil] || soil; // Friendly name
     showPlaceholder();
 }else{
     soilLabel.innerText="Unknown Soil";
