@@ -192,31 +192,45 @@ return {temp:d.main.temp,rain:d.rain?.["1h"]||0};
 }
 
 /* ================= RECOMMEND ================= */
-recBtn.onclick=async()=>{
-if(!lastSoil){
-soilLabel.innerText="No soil detected";
-return;
-}
-soilLabel.innerText="Analyzing season and weather...";
-cropContainer.innerHTML="";
+recBtn.onclick = async () => {
+    if (!lastSoil) {
+        soilLabel.innerText = "No soil detected";
+        cropContainer.innerHTML = "";
+        return;
+    }
 
-try{
-await getLocation();
-const weather=await getWeather();
-setTimeout(()=>{
-const season=getSeason();
-let crops=seasonalCrops[season][lastSoil] || ["Consult Expert"];
-// Adjust based on weather
-if(weather){
-if(weather.rain<5 && lastSoil==="arid") crops.push("Drought-resistant millet");
-if(weather.rain>20 && lastSoil==="alluvial") crops.push("Rice (high rainfall)");
-}
-soilLabel.innerText=`${season.toUpperCase()} CROPS`;
-cropContainer.innerHTML=crops.map(c=>`<span class="crop-badge">${c}</span>`).join("");
-},1500);
-}catch(e){
-soilLabel.innerText="Weather unavailable";
-}
+    soilLabel.innerText = "Analyzing season and weather...";
+    cropContainer.innerHTML = "";
+
+    try {
+        await getLocation();
+        const weather = await getWeather();
+
+        setTimeout(() => {
+            const season = getSeason();
+
+            // Always include base crops for soil+season
+            let crops = [...(seasonalCrops[season][lastSoil] || ["Consult Expert"])];
+
+            // Add extra crops based on weather
+            if (weather) {
+                if (weather.rain < 5 && lastSoil === "arid") crops.push("Drought-resistant millet");
+                if (weather.rain > 20 && lastSoil === "alluvial") crops.push("Rice (high rainfall)");
+                if (weather.temp > 35) crops.push("Heat-tolerant crop");
+                if (weather.temp < 15) crops.push("Cold-tolerant crop");
+            }
+
+            // Keep max 2-3 crops for clean UI
+            crops = crops.slice(0, 3);
+
+            soilLabel.innerText = `${season.toUpperCase()} CROPS`;
+            cropContainer.innerHTML = crops.map(c => `<span class="crop-badge">${c}</span>`).join("");
+
+        }, 1500);
+    } catch (e) {
+        soilLabel.innerText = "Weather unavailable";
+        cropContainer.innerHTML = "";
+    }
 };
 </script>
 
