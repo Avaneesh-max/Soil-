@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgroAI | Smart Crop Advisor</title>
+<title>AgroAI | Smart Weather-Aware Crop Advisor</title>
 
 <style>
 :root { --primary:#00ff88; --bg:#0b0f14; --glass:rgba(22,27,34,.9); }
@@ -71,11 +71,12 @@ canvas{display:none}
 
 <script>
 /* ================= CONFIG ================= */
-const API_KEY = "CxxhkxfjWLeZydDtSjFd";
+const API_KEY = "0dcf74ef30f1f604d72214090768535f"; // OpenWeatherMap API key
+const RF_KEY = "CxxhkxfjWLeZydDtSjFd"; // Roboflow key
 const WORKFLOW_URL = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 
 /* ================= STATE ================= */
-let locked=false, lastSoil=null;
+let locked=false, lastSoil=null, lat=null, lon=null;
 
 /* ================= CROPS ================= */
 const seasonalCrops = {
@@ -128,7 +129,7 @@ try{
 const r=await fetch(WORKFLOW_URL,{
 method:"POST",
 headers:{"Content-Type":"application/json"},
-body:JSON.stringify({api_key:API_KEY,inputs:{image:{type:"base64",value:img}}})
+body:JSON.stringify({api_key:RF_KEY,inputs:{image:{type:"base64",value:img}}})
 });
 const d=await r.json();
 const soil=extractSoil(d);
@@ -167,22 +168,55 @@ if(m>=7 && m<=10) return "monsoon";
 return "winter";
 }
 
+/* ================= LOCATION ================= */
+function getLocation(){
+return new Promise((resolve,reject)=>{
+if(!navigator.geolocation) reject("No GPS");
+navigator.geolocation.getCurrentPosition(pos=>{
+lat=pos.coords.latitude;
+lon=pos.coords.longitude;
+resolve({lat,lon});
+},err=>reject(err));
+});
+}
+
+/* ================= WEATHER ================= */
+async function getWeather(){
+if(lat===null || lon===null) return null;
+try{
+const url=`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}`;
+const r=await fetch(url);
+const d=await r.json();
+return {temp:d.main.temp,rain:d.rain?.["1h"]||0};
+}catch{return null;}
+}
+
 /* ================= RECOMMEND ================= */
-recBtn.onclick=()=>{
+recBtn.onclick=async()=>{
 if(!lastSoil){
 soilLabel.innerText="No soil detected";
 return;
 }
-
-soilLabel.innerText="Analyzing season...";
+soilLabel.innerText="Analyzing season and weather...";
 cropContainer.innerHTML="";
 
+try{
+await getLocation();
+const weather=await getWeather();
 setTimeout(()=>{
 const season=getSeason();
+let crops=seasonalCrops[season][lastSoil] || ["Consult Expert"];
+// Adjust based on weather
+if(weather){
+if(weather.rain<5 && lastSoil==="arid") crops.push("Drought-resistant millet");
+if(weather.rain>20 && lastSoil==="alluvial") crops.push("Rice (high rainfall)");
+}
 soilLabel.innerText=`${season.toUpperCase()} CROPS`;
-const crops=seasonalCrops[season][lastSoil] || ["Consult Expert"];
 cropContainer.innerHTML=crops.map(c=>`<span class="crop-badge">${c}</span>`).join("");
 },1500);
+}catch(e){
+soilLabel.innerText="Weather unavailable";
+}
 };
 </script>
 
