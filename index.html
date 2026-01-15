@@ -110,6 +110,16 @@ function normalizeSoil(soil){
     return soilMap[soil] || null;
 }
 
+/* ================= SOIL DISPLAY NAMES ================= */
+const soilDisplayNames = {
+    laterite: "Laterite Soil",
+    red: "Red Soil",
+    alluvial: "Alluvial Soil",
+    black: "Black Soil",
+    arid: "Arid Soil",
+    mountain: "Mountain Soil"
+};
+
 /* ================= ELEMENTS ================= */
 const video=document.getElementById("camera");
 const canvas=document.getElementById("snapshot");
@@ -138,12 +148,12 @@ const d=await r.json();
 let rawSoil = extractSoil(d);
 let soil = normalizeSoil(rawSoil);
 if(soil){
-lastSoil=soil;
-soilLabel.innerText=soil;
-showPlaceholder();
+    lastSoil = soil;
+    soilLabel.innerText = soilDisplayNames[soil] || soil; // Friendly display
+    showPlaceholder();
 }else{
-soilLabel.innerText="Unknown soil";
-cropContainer.innerHTML="";
+    soilLabel.innerText="Unknown Soil";
+    cropContainer.innerHTML="";
 }
 }catch{}
 }
@@ -255,7 +265,7 @@ while(crops.length<2){
 crops = crops.sort(()=>0.5-Math.random()).slice(0,5);
 
 // Display only valid crops
-soilLabel.innerText=`${season.toUpperCase()} CROPS`;
+soilLabel.innerText=`${getSeason().toUpperCase()} CROPS`;
 cropContainer.innerHTML="";
 crops.forEach(c=>{
     if(c){
