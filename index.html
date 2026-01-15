@@ -62,7 +62,7 @@ canvas{display:none}
 
 <button id="lockBtn" class="lock-btn">LOCK SOIL</button>
 <br>
-<button id="recBtn" class="recommend-btn">RECOMMEND CROPS</button>
+<button id="recBtn" class="recommend-btn">SEE RECOMMENDED CROPS</button>
 </div>
 </div>
 </div>
@@ -81,28 +81,28 @@ let locked=false, lastSoil=null, lat=null, lon=null;
 /* ================= CROPS ================= */
 const seasonalCrops = {
 summer:{
-laterite:["Cashew","Coffee"],
-red:["Maize","Groundnut"],
-black:["Cotton","Sunflower"],
-alluvial:["Rice","Sugarcane"],
-arid:["Bajra"],
-mountain:["Potato"]
+laterite:["Cashew","Coffee","Soybean","Vegetables"],
+red:["Maize","Groundnut","Cotton","Sunflower"],
+black:["Cotton","Sunflower","Soybean"],
+alluvial:["Rice","Sugarcane","Maize"],
+arid:["Bajra","Millets","Sorghum"],
+mountain:["Potato","Tomato","Apple"]
 },
 monsoon:{
-laterite:["Rice","Tea"],
-red:["Cotton","Millets"],
-black:["Soybean"],
-alluvial:["Rice","Jute"],
-arid:["Millets"],
-mountain:["Barley"]
+laterite:["Rice","Tea","Cashew"],
+red:["Cotton","Millets","Maize"],
+black:["Soybean","Cotton"],
+alluvial:["Rice","Jute","Sugarcane"],
+arid:["Millets","Bajra"],
+mountain:["Barley","Apple","Potato"]
 },
 winter:{
-laterite:["Vegetables"],
-red:["Wheat","Gram"],
-black:["Wheat"],
-alluvial:["Wheat","Mustard"],
-arid:["Mustard"],
-mountain:["Apple"]
+laterite:["Vegetables","Tea","Coffee"],
+red:["Wheat","Gram","Mustard"],
+black:["Wheat","Soybean"],
+alluvial:["Wheat","Mustard","Jute"],
+arid:["Mustard","Bajra"],
+mountain:["Apple","Barley","Potato"]
 }
 };
 
@@ -209,8 +209,8 @@ recBtn.onclick = async () => {
         setTimeout(() => {
             const season = getSeason();
 
-            // Always include base crops for soil+season
-            let crops = [...(seasonalCrops[season][lastSoil] || ["Consult Expert"])];
+            // Base crops
+            let crops = [...(seasonalCrops[season][lastSoil] || [])];
 
             // Add extra crops based on weather
             if (weather) {
@@ -220,8 +220,9 @@ recBtn.onclick = async () => {
                 if (weather.temp < 15) crops.push("Cold-tolerant crop");
             }
 
-            // Keep max 2-3 crops for clean UI
-            crops = crops.slice(0, 3);
+            // Ensure 2-5 crops
+            if(crops.length < 2) crops.push("See Recommended Crops");
+            if(crops.length > 5) crops = crops.slice(0,5);
 
             soilLabel.innerText = `${season.toUpperCase()} CROPS`;
             cropContainer.innerHTML = crops.map(c => `<span class="crop-badge">${c}</span>`).join("");
