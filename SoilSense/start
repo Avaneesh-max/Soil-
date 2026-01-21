@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Soil Sense – Start</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* ------------------ RESET ------------------ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                   "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* ------------------ BODY ------------------ */
+    body {
+      height: 100vh;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ------------------ BACKGROUND BLOBS ------------------ */
+    .blob {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle at 30% 30%, #6dd5a6, #2193b0);
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.7;
+      animation: float 10s infinite alternate ease-in-out;
+    }
+    .blob.one { top: -120px; left: -120px; }
+    .blob.two { bottom: -120px; right: -120px; animation-delay: 3s; }
+
+    @keyframes float {
+      0%   { transform: translateY(0); }
+      50%  { transform: translateY(50px); }
+      100% { transform: translateY(0); }
+    }
+
+    /* ------------------ PLANTS ------------------ */
+    .plants {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      z-index: 0;
+    }
+    .plant {
+      position: absolute;
+      bottom: -20px;
+      width: 6px;
+      background: linear-gradient(to top, #1f6f4a, #4dd599);
+      border-radius: 10px;
+      transform-origin: bottom center;
+      animation: sway 6s ease-in-out infinite;
+      filter: blur(0.4px);
+    }
+    .plant::before,
+    .plant::after {
+      content: "";
+      position: absolute;
+      width: 70px;
+      height: 35px;
+      background: linear-gradient(135deg, #3cb371, #7fffd4);
+      border-radius: 100% 0 100% 0;
+      opacity: 0.9;
+    }
+    .plant::before { left: -55px; top: 80px; transform: rotate(-25deg); }
+    .plant::after  { left: -10px; top: 140px; transform: rotate(35deg); }
+
+    @keyframes sway {
+      0%   { transform: rotate(-2deg); }
+      50%  { transform: rotate(2deg); }
+      100% { transform: rotate(-2deg); }
+    }
+
+    /* Plant positions */
+    .p1 { left: 10%; height: 220px; animation-duration: 5s; }
+    .p2 { left: 30%; height: 280px; animation-duration: 7s; }
+    .p3 { left: 65%; height: 240px; animation-duration: 6.5s; }
+    .p4 { left: 85%; height: 300px; animation-duration: 8s; }
+
+    /* ------------------ GLASS CARD ------------------ */
+    .glass {
+      position: relative;
+      z-index: 2;
+      padding: 60px;
+      border-radius: 32px;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    .glass h1 {
+      color: white;
+      font-size: 2.8rem;
+      font-weight: 700;
+      margin-bottom: 40px;
+    }
+
+    /* ------------------ START BUTTON ------------------ */
+    .start-btn {
+      display: inline-block;
+      padding: 22px 90px;
+      font-size: 1.4rem;
+      font-weight: 700;
+      border-radius: 999px;
+      text-decoration: none;
+      color: #0b2f24;
+      background: linear-gradient(135deg, #9be15d, #00e3ae);
+      box-shadow: 0 18px 45px rgba(0, 227, 174, 0.6);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .start-btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 25px 65px rgba(0, 227, 174, 0.8);
+    }
+    .start-btn:active {
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background blobs -->
+  <div class="blob one"></div>
+  <div class="blob two"></div>
+
+  <!-- Animated plants -->
+  <div class="plants">
+    <div class="plant p1"></div>
+    <div class="plant p2"></div>
+    <div class="plant p3"></div>
+    <div class="plant p4"></div>
+  </div>
+
+  <!-- Glass card with Start button -->
+  <div class="glass">
+    <h1>Soil Sense</h1>
+    <a href="index.html" class="start-btn">Start</a>
+  </div>
+
+</body>
+</html>
