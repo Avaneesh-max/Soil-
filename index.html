@@ -4,98 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgroAI | Back Camera Soil Advisor</title>
-
 <style>
-:root{
-  --primary:#00ff88;
-  --bg:#0b0f14;
-  --glass:rgba(22,27,34,.9);
-}
-body{
-  margin:0;
-  font-family:system-ui;
-  background:var(--bg);
-  color:#fff;
-  overflow:hidden;
-}
+:root{--primary:#00ff88;--bg:#0b0f14;--glass:rgba(22,27,34,.9);}
+body{margin:0;font-family:system-ui;background:var(--bg);color:#fff;overflow:hidden}
 .viewport{width:100vw;height:100vh;position:relative}
 video{width:100%;height:100%;object-fit:cover;filter:brightness(.9)}
-.hud{
-  position:absolute;
-  bottom:24px;
-  left:50%;
-  transform:translateX(-50%);
-  width:92%;
-  max-width:460px;
-}
-.panel{
-  background:var(--glass);
-  backdrop-filter:blur(26px);
-  border-radius:28px;
-  padding:22px;
-  border:1px solid rgba(255,255,255,.1);
-  box-shadow:0 25px 60px rgba(0,0,0,.9);
-  text-align:center;
-}
-.status{
-  font-size:.7rem;
-  letter-spacing:2px;
-  color:#8b949e;
-}
-.dot{
-  width:8px;height:8px;
-  background:var(--primary);
-  border-radius:50%;
-  display:inline-block;
-  margin-right:8px;
-  animation:pulse 1s infinite;
-}
+.hud{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);width:92%;max-width:460px}
+.panel{background:var(--glass);backdrop-filter:blur(26px);border-radius:28px;padding:22px;border:1px solid rgba(255,255,255,.1);box-shadow:0 25px 60px rgba(0,0,0,.9);text-align:center}
+.status{font-size:.7rem;letter-spacing:2px;color:#8b949e}
+.dot{width:8px;height:8px;background:var(--primary);border-radius:50%;display:inline-block;margin-right:8px;animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.3}}
-#soil{
-  font-size:2rem;
-  font-weight:900;
-  margin:10px 0;
-  color:var(--primary);
-}
-#confidence{
-  font-size:.75rem;
-  color:#8b949e;
-}
-.crops{
-  display:flex;
-  flex-wrap:wrap;
-  justify-content:center;
-  gap:8px;
-  margin-top:10px;
-}
-.badge{
-  border:1px solid var(--primary);
-  color:var(--primary);
-  padding:6px 14px;
-  border-radius:12px;
-  font-size:.8rem;
-  font-weight:700;
-}
-button{
-  margin-top:10px;
-  padding:10px 20px;
-  border-radius:20px;
-  border:none;
-  font-weight:800;
-  cursor:pointer;
-}
+#soil{font-size:2rem;font-weight:900;margin:10px 0;color:var(--primary)}
+#confidence{font-size:.75rem;color:#8b949e}
+.crops{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px}
+.badge{border:1px solid var(--primary);color:var(--primary);padding:6px 14px;border-radius:12px;font-size:.8rem;font-weight:700;cursor:pointer}
+button{margin-top:10px;padding:10px 20px;border-radius:20px;border:none;font-weight:800;cursor:pointer}
 .primary{background:var(--primary);color:#000}
 .secondary{background:#222;color:#fff}
 .danger{background:#ff5555;color:#fff}
-.explain{
-  font-size:.75rem;
-  color:#9aa4af;
-  margin-top:10px;
-}
+.explain{font-size:.75rem;color:#9aa4af;margin-top:10px}
 canvas{display:none}
 </style>
 </head>
-
 <body>
 
 <div class="viewport">
@@ -122,11 +52,7 @@ canvas{display:none}
 
 <script>
 /* ================= STATE ================= */
-let scanning=true;
-let locked=false;
-let scanStep=0;
-let lastSoil=null;
-let stream=null;
+let scanning=true, locked=false, scanStep=0, lastSoil=null, stream=null;
 
 /* ================= DATA ================= */
 const soilNames={red:"Red Soil",black:"Black Soil",laterite:"Laterite Soil",alluvial:"Alluvial Soil",arid:"Arid Soil",mountain:"Mountain Soil"};
@@ -144,38 +70,35 @@ const lockBtn=document.getElementById("lockBtn");
 const startBtn=document.getElementById("startBtn");
 
 /* ================= OS DETECTION ================= */
-function isMobileIOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
-function isMobileAndroid(){ return /Android/.test(navigator.userAgent); }
+const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isAndroid=/Android/.test(navigator.userAgent);
 
 /* ================= CAMERA START ================= */
 async function startCamera(){
   if(stream) stream.getTracks().forEach(t=>t.stop());
+  let constraints={video:true,audio:false};
 
-  let constraints = {video:true,audio:false};
-  
-  // Use back camera on mobile iOS/Android
-  if(isMobileIOS() || isMobileAndroid()){
-    constraints.video = { facingMode: { ideal:"environment" } };
+  if(isiOS || isAndroid){
+    constraints.video={ facingMode:{ exact:"environment" } }; // force back camera
   }
 
   try{
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    cam.srcObject = stream;
+    stream=await navigator.mediaDevices.getUserMedia(constraints);
+    cam.srcObject=stream;
     soilEl.innerText="Scanning soil…";
     startScan();
   }catch(e){
-    alert("Camera access failed: " + e);
+    alert("Cannot access back camera: " + e);
     console.error(e);
   }
 }
 
 /* ================= SCAN LOOP ================= */
 function startScan(){
-  const scanTimer = setInterval(()=>{
+  const scanTimer=setInterval(()=>{
     if(!scanning || locked) return;
     scanStep++;
     soilEl.innerText="Scanning soil" + ".".repeat(scanStep%4);
-
     if(scanStep>=5){
       autoDetect();
       clearInterval(scanTimer);
@@ -228,9 +151,7 @@ function manualSelect(){
   const s=prompt("Enter soil: red, black, laterite, alluvial, arid, mountain");
   if(soilNames[s]) applySoil(s,"Manual");
 }
-function forceDemo(){
-  applySoil("alluvial","Demo");
-}
+function forceDemo(){ applySoil("alluvial","Demo"); }
 
 /* ================= LOCK ================= */
 lockBtn.onclick=()=>{
@@ -239,15 +160,19 @@ lockBtn.onclick=()=>{
 };
 
 /* ================= START BUTTON ================= */
-startBtn.onclick = ()=>{
+startBtn.onclick=()=>{
   startCamera();
   startBtn.style.display="none"; // hide after tap
 };
 
 /* ================= CLEANUP ================= */
-window.addEventListener("beforeunload",()=>{
-  stream?.getTracks().forEach(t=>t.stop());
-});
+window.addEventListener("beforeunload",()=>{ stream?.getTracks().forEach(t=>t.stop()); });
+
+/* ================= AUTO START ON NON-iOS/Android ================= */
+if(!isiOS && !isAndroid){
+  startCamera();
+  startBtn.style.display="none";
+}
 </script>
 
 </body>
