@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgroAI | Smart Soil & Crop Advisor</title>
+<title>AgroAI | Back Camera Soil & Crop Advisor</title>
 
 <style>
 :root{
@@ -111,7 +111,6 @@ canvas{display:none}
       <button id="lockBtn" class="primary">LOCK SOIL</button>
       <button onclick="manualSelect()" class="secondary">MANUAL SOIL</button>
       <button onclick="forceDemo()" class="danger">DEMO MODE</button>
-      <button id="camBtn" class="secondary">SWITCH CAMERA</button>
 
       <div id="explain" class="explain"></div>
     </div>
@@ -127,7 +126,6 @@ let locked=false;
 let scanStep=0;
 let lastSoil=null;
 let stream=null;
-let currentFacing="environment"; // back camera default
 
 /* ================= DATA ================= */
 const soilNames={
@@ -160,7 +158,6 @@ const confidenceEl=document.getElementById("confidence");
 const cropsEl=document.getElementById("crops");
 const explain=document.getElementById("explain");
 const lockBtn=document.getElementById("lockBtn");
-const camBtn=document.getElementById("camBtn");
 
 /* ================= CAMERA ================= */
 async function startCamera(){
@@ -169,24 +166,17 @@ async function startCamera(){
   }
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:currentFacing}},
+      video:{facingMode:"environment"}, // BACK camera only
       audio:false
     });
     cam.srcObject = stream;
-    camBtn.innerText = currentFacing==="environment" ? "SWITCH TO FRONT CAMERA" : "SWITCH TO BACK CAMERA";
   }catch(e){
     alert("Camera access failed");
     console.error(e);
   }
 }
-// Start default camera
+// Start back camera
 startCamera();
-
-// Toggle front/back
-camBtn.onclick = () => {
-  currentFacing = currentFacing==="environment"?"user":"environment";
-  startCamera();
-};
 
 /* ================= SCAN LOOP ================= */
 const scanTimer=setInterval(()=>{
