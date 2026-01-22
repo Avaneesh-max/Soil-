@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AgroAI | Smart Crop Advisor</title>
 
 <style>
@@ -11,31 +11,30 @@
   --bg:#0b0f14;
   --glass:rgba(22,27,34,.88);
 }
-*{box-sizing:border-box}
 body{
   margin:0;
-  font-family:system-ui,-apple-system,Segoe UI;
+  font-family:system-ui;
   background:var(--bg);
-  color:#fff;
+  color:white;
   overflow:hidden;
 }
 .viewport{width:100vw;height:100vh;position:relative}
 video{width:100%;height:100%;object-fit:cover}
 .hud{
   position:absolute;
-  bottom:25px;
+  bottom:24px;
   left:50%;
   transform:translateX(-50%);
   width:92%;
   max-width:420px;
 }
-.glass{
+.panel{
   background:var(--glass);
-  backdrop-filter:blur(22px);
+  backdrop-filter:blur(24px);
   border-radius:28px;
   padding:22px;
   border:1px solid rgba(255,255,255,.1);
-  box-shadow:0 25px 60px rgba(0,0,0,.8);
+  box-shadow:0 25px 60px rgba(0,0,0,.85);
   text-align:center;
 }
 .status{
@@ -44,10 +43,10 @@ video{width:100%;height:100%;object-fit:cover}
   color:#8b949e;
 }
 .dot{
-  display:inline-block;
   width:8px;height:8px;
   background:var(--primary);
   border-radius:50%;
+  display:inline-block;
   margin-right:8px;
   animation:pulse 1s infinite;
 }
@@ -65,16 +64,17 @@ video{width:100%;height:100%;object-fit:cover}
   gap:8px;
 }
 .badge{
-  padding:6px 14px;
-  border-radius:12px;
   border:1px solid var(--primary);
   color:var(--primary);
+  padding:6px 14px;
+  border-radius:12px;
   font-size:.8rem;
   font-weight:700;
+  cursor:pointer;
 }
 button{
   margin-top:12px;
-  padding:10px 20px;
+  padding:10px 22px;
   border-radius:20px;
   border:none;
   font-weight:800;
@@ -87,13 +87,14 @@ canvas{display:none}
 </head>
 
 <body>
+
 <div class="viewport">
   <video id="cam" autoplay playsinline></video>
 
   <div class="hud">
-    <div class="glass">
+    <div class="panel">
       <div class="status"><span class="dot"></span>LIVE AI ANALYSIS</div>
-      <div id="soil">Scanning…</div>
+      <div id="soil">Scanning soil…</div>
       <div id="crops" class="crops"></div>
       <button id="lockBtn" class="lock">LOCK SOIL</button>
     </div>
@@ -104,15 +105,20 @@ canvas{display:none}
 
 <script>
 /* ================= CONFIG ================= */
-// ⚠️ SCHOOL DEMO ONLY – rotate keys after submission
-const RF_KEY="CxxhkxfjWLeZydDtSjFd";
-const WORKFLOW="https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
+// ⚠️ DEMO ONLY – rotate keys later
+const RF_KEY = "CxxhkxfjWLeZydDtSjFd";
+const WORKFLOW = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
 
 /* ================= STATE ================= */
-let locked=false,lastSoil=null,stream=null;
+let stream=null;
+let scanInterval=null;
+let scanCount=0;
+let locked=false;
+let lastSoil=null;
+const MAX_SCANS=10;
 
-/* ================= SOILS ================= */
-const soilMap={
+/* ================= DATA ================= */
+const soilNames={
   laterite:"Laterite Soil",
   red:"Red Soil",
   black:"Black Soil",
@@ -121,11 +127,10 @@ const soilMap={
   mountain:"Mountain Soil"
 };
 
-/* ================= CROPS (India-based seasons) ================= */
 const crops={
-summer:{laterite:["Cashew","Coffee"],red:["Maize","Groundnut"],black:["Cotton"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
-monsoon:{laterite:["Rice","Tea"],red:["Cotton"],black:["Soybean"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
-winter:{laterite:["Vegetables"],red:["Wheat"],black:["Wheat"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
+  summer:{laterite:["Cashew","Coffee"],red:["Maize","Groundnut"],black:["Cotton"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
+  monsoon:{laterite:["Rice","Tea"],red:["Cotton"],black:["Soybean"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
+  winter:{laterite:["Vegetables"],red:["Wheat"],black:["Wheat"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
 };
 
 /* ================= ELEMENTS ================= */
@@ -140,12 +145,14 @@ navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
 .then(s=>{
   stream=s;
   cam.srcObject=s;
-  setInterval(scan,1200);
+  scanInterval=setInterval(scan,1200);
 });
 
 /* ================= SCAN ================= */
 async function scan(){
   if(locked||document.hidden) return;
+
+  scanCount++;
 
   const ctx=snap.getContext("2d");
   ctx.drawImage(cam,0,0,416,416);
@@ -160,26 +167,67 @@ async function scan(){
         inputs:{image:{type:"base64",value:img}}
       })
     });
+
     const d=await r.json();
-    const soil=extractSoil(d);
+    console.log("RF RESPONSE:",d);
+
+    const soil=normalizeSoil(extractSoil(d));
+
     if(soil){
       lastSoil=soil;
-      soilEl.innerText=soilMap[soil]||soil;
+      soilEl.innerText=soilNames[soil]||soil;
       showCTA();
+      stopScan();
+      return;
     }
-  }catch{}
+
+    if(scanCount>=MAX_SCANS){
+      soilEl.innerText="No soil detected";
+      cropEl.innerHTML="<span class='badge'>Improve lighting / angle</span>";
+      stopScan();
+    }
+
+  }catch(e){
+    console.error(e);
+    soilEl.innerText="AI error";
+    stopScan();
+  }
 }
 
+function stopScan(){
+  clearInterval(scanInterval);
+}
+
+/* ================= AI PARSING ================= */
 function extractSoil(d){
-  const o=d?.outputs?.[0];
-  if(!o) return null;
-  for(const k of Object.keys(o)){
-    const p=o[k]?.predictions;
-    if(Array.isArray(p)&&p.length){
-      return p[0].class.toLowerCase();
+  if(d?.outputs?.[0]?.predictions?.length)
+    return d.outputs[0].predictions[0].class;
+
+  if(d?.predictions?.length)
+    return d.predictions[0].class;
+
+  if(d?.outputs?.[0]){
+    for(const k in d.outputs[0]){
+      const p=d.outputs[0][k]?.predictions;
+      if(Array.isArray(p)&&p.length)
+        return p[0].class;
     }
   }
   return null;
+}
+
+function normalizeSoil(s){
+  if(!s) return null;
+  s=s.toLowerCase().replace(/[\s-_]/g,"");
+  const map={
+    redsoil:"red",red:"red",
+    blacksoil:"black",black:"black",
+    lateritic:"laterite",laterite:"laterite",
+    alluvial:"alluvial",
+    arid:"arid",
+    mountain:"mountain"
+  };
+  return map[s]||null;
 }
 
 /* ================= UI ================= */
@@ -192,7 +240,6 @@ function showCTA(){
   cropEl.appendChild(b);
 }
 
-/* ================= RECOMMEND ================= */
 function recommend(){
   cropEl.innerHTML="";
   soilEl.innerText="Analyzing season…";
@@ -200,17 +247,16 @@ function recommend(){
   setTimeout(()=>{
     const m=new Date().getMonth()+1;
     const season=m>=7&&m<=10?"monsoon":m>=3&&m<=6?"summer":"winter";
-
     const list=crops[season]?.[lastSoil]||[];
-    soilEl.innerText=season.toUpperCase()+" CROPS";
 
-    [...new Set(list)].slice(0,5).forEach(c=>{
+    soilEl.innerText=season.toUpperCase()+" CROPS";
+    [...new Set(list)].forEach(c=>{
       const s=document.createElement("span");
       s.className="badge";
       s.innerText=c;
       cropEl.appendChild(s);
     });
-  },1000);
+  },900);
 }
 
 /* ================= LOCK ================= */
