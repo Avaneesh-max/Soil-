@@ -111,6 +111,7 @@ canvas{display:none}
       <button id="lockBtn" class="primary">LOCK SOIL</button>
       <button onclick="manualSelect()" class="secondary">MANUAL SOIL</button>
       <button onclick="forceDemo()" class="danger">DEMO MODE</button>
+      <button id="camBtn" class="secondary">SWITCH CAMERA</button>
 
       <div id="explain" class="explain"></div>
     </div>
@@ -125,6 +126,8 @@ let scanning=true;
 let locked=false;
 let scanStep=0;
 let lastSoil=null;
+let stream=null;
+let currentFacing="environment"; // back camera default
 
 /* ================= DATA ================= */
 const soilNames={
@@ -135,7 +138,6 @@ const soilNames={
   arid:"Arid Soil",
   mountain:"Mountain Soil"
 };
-
 const soilInfo={
   red:"Rich in iron, suitable for maize, pulses, and cotton.",
   black:"Clay-rich soil that retains moisture, ideal for cotton and wheat.",
@@ -144,25 +146,54 @@ const soilInfo={
   arid:"Dry soil with low fertility, suitable for millets.",
   mountain:"Cool-region soil, ideal for fruits and potatoes."
 };
-
 const crops={
   summer:{red:["Maize","Groundnut"],black:["Cotton"],laterite:["Cashew"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
   monsoon:{red:["Cotton"],black:["Soybean"],laterite:["Rice"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
   winter:{red:["Wheat"],black:["Wheat"],laterite:["Vegetables"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
 };
-
 const soils=Object.keys(soilNames);
 
+/* ================= ELEMENTS ================= */
+const cam=document.getElementById("cam");
+const soilEl=document.getElementById("soil");
+const confidenceEl=document.getElementById("confidence");
+const cropsEl=document.getElementById("crops");
+const explain=document.getElementById("explain");
+const lockBtn=document.getElementById("lockBtn");
+const camBtn=document.getElementById("camBtn");
+
 /* ================= CAMERA ================= */
-navigator.mediaDevices.getUserMedia({video:true})
-.then(s=>cam.srcObject=s);
+async function startCamera(){
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+  }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:currentFacing}},
+      audio:false
+    });
+    cam.srcObject = stream;
+    camBtn.innerText = currentFacing==="environment" ? "SWITCH TO FRONT CAMERA" : "SWITCH TO BACK CAMERA";
+  }catch(e){
+    alert("Camera access failed");
+    console.error(e);
+  }
+}
+// Start default camera
+startCamera();
+
+// Toggle front/back
+camBtn.onclick = () => {
+  currentFacing = currentFacing==="environment"?"user":"environment";
+  startCamera();
+};
 
 /* ================= SCAN LOOP ================= */
 const scanTimer=setInterval(()=>{
   if(!scanning||locked) return;
 
   scanStep++;
-  soil.innerText="Scanning soil" + ".".repeat(scanStep%4);
+  soilEl.innerText="Scanning soil" + ".".repeat(scanStep%4);
 
   if(scanStep>=5){
     autoDetect();
@@ -181,44 +212,40 @@ function autoDetect(){
 function applySoil(type,conf){
   scanning=false;
   lastSoil=type;
-  soil.innerText=soilNames[type];
-  confidence.innerText="AI confidence: "+conf;
+  soilEl.innerText=soilNames[type];
+  confidenceEl.innerText="AI confidence: "+conf;
   explain.innerText=soilInfo[type];
   showCTA();
 }
 
 /* ================= UI ================= */
 function showCTA(){
-  cropsEl().innerHTML="";
+  cropsEl.innerHTML="";
   const b=document.createElement("span");
   b.className="badge";
   b.innerText="SEE RECOMMENDED CROPS";
   b.onclick=recommend;
-  cropsEl().appendChild(b);
+  cropsEl.appendChild(b);
 }
 
 function recommend(){
-  cropsEl().innerHTML="";
+  cropsEl.innerHTML="";
   const m=new Date().getMonth()+1;
   const season=m>=7&&m<=10?"monsoon":m>=3&&m<=6?"summer":"winter";
-  soil.innerText=season.toUpperCase()+" CROPS";
-
+  soilEl.innerText=season.toUpperCase()+" CROPS";
   crops[season][lastSoil].forEach(c=>{
     const s=document.createElement("span");
     s.className="badge";
     s.innerText=c;
-    cropsEl().appendChild(s);
+    cropsEl.appendChild(s);
   });
 }
 
-function cropsEl(){return document.getElementById("crops");}
-
-/* ================= MANUAL ================= */
+/* ================= MANUAL / DEMO ================= */
 function manualSelect(){
   const s=prompt("Enter soil: red, black, laterite, alluvial, arid, mountain");
   if(soilNames[s]) applySoil(s,"Manual");
 }
-
 function forceDemo(){
   applySoil("alluvial","Demo");
 }
@@ -228,6 +255,11 @@ lockBtn.onclick=()=>{
   locked=!locked;
   lockBtn.innerText=locked?"UNLOCK SOIL":"LOCK SOIL";
 };
+
+/* ================= CLEANUP ================= */
+window.addEventListener("beforeunload",()=>{
+  stream?.getTracks().forEach(t=>t.stop());
+});
 </script>
 
 </body>
