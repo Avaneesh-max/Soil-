@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgroAI | Back Camera Soil & Crop Advisor</title>
+<title>AgroAI | Back Camera Soil Advisor</title>
 
 <style>
 :root{
@@ -104,11 +104,12 @@ canvas{display:none}
   <div class="hud">
     <div class="panel">
       <div class="status"><span class="dot"></span>SMART SOIL ANALYSIS</div>
-      <div id="soil">Scanning soil…</div>
+      <div id="soil">Waiting to start...</div>
       <div id="confidence"></div>
       <div id="crops" class="crops"></div>
 
-      <button id="lockBtn" class="primary">LOCK SOIL</button>
+      <button id="startBtn" class="primary">START CAMERA</button>
+      <button id="lockBtn" class="secondary">LOCK SOIL</button>
       <button onclick="manualSelect()" class="secondary">MANUAL SOIL</button>
       <button onclick="forceDemo()" class="danger">DEMO MODE</button>
 
@@ -128,27 +129,9 @@ let lastSoil=null;
 let stream=null;
 
 /* ================= DATA ================= */
-const soilNames={
-  red:"Red Soil",
-  black:"Black Soil",
-  laterite:"Laterite Soil",
-  alluvial:"Alluvial Soil",
-  arid:"Arid Soil",
-  mountain:"Mountain Soil"
-};
-const soilInfo={
-  red:"Rich in iron, suitable for maize, pulses, and cotton.",
-  black:"Clay-rich soil that retains moisture, ideal for cotton and wheat.",
-  laterite:"Acidic soil found in high rainfall areas, good for plantation crops.",
-  alluvial:"Very fertile river soil, excellent for rice and sugarcane.",
-  arid:"Dry soil with low fertility, suitable for millets.",
-  mountain:"Cool-region soil, ideal for fruits and potatoes."
-};
-const crops={
-  summer:{red:["Maize","Groundnut"],black:["Cotton"],laterite:["Cashew"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
-  monsoon:{red:["Cotton"],black:["Soybean"],laterite:["Rice"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
-  winter:{red:["Wheat"],black:["Wheat"],laterite:["Vegetables"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
-};
+const soilNames={red:"Red Soil",black:"Black Soil",laterite:"Laterite Soil",alluvial:"Alluvial Soil",arid:"Arid Soil",mountain:"Mountain Soil"};
+const soilInfo={red:"Rich in iron, suitable for maize, pulses, and cotton.",black:"Clay-rich soil that retains moisture, ideal for cotton and wheat.",laterite:"Acidic soil found in high rainfall areas, good for plantation crops.",alluvial:"Very fertile river soil, excellent for rice and sugarcane.",arid:"Dry soil with low fertility, suitable for millets.",mountain:"Cool-region soil, ideal for fruits and potatoes."};
+const crops={summer:{red:["Maize","Groundnut"],black:["Cotton"],laterite:["Cashew"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},monsoon:{red:["Cotton"],black:["Soybean"],laterite:["Rice"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},winter:{red:["Wheat"],black:["Wheat"],laterite:["Vegetables"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}};
 const soils=Object.keys(soilNames);
 
 /* ================= ELEMENTS ================= */
@@ -158,38 +141,47 @@ const confidenceEl=document.getElementById("confidence");
 const cropsEl=document.getElementById("crops");
 const explain=document.getElementById("explain");
 const lockBtn=document.getElementById("lockBtn");
+const startBtn=document.getElementById("startBtn");
 
-/* ================= CAMERA ================= */
+/* ================= OS DETECTION ================= */
+function isMobileIOS(){ return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
+function isMobileAndroid(){ return /Android/.test(navigator.userAgent); }
+
+/* ================= CAMERA START ================= */
 async function startCamera(){
-  if(stream){
-    stream.getTracks().forEach(t=>t.stop());
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+
+  let constraints = {video:true,audio:false};
+  
+  // Use back camera on mobile iOS/Android
+  if(isMobileIOS() || isMobileAndroid()){
+    constraints.video = { facingMode: { ideal:"environment" } };
   }
+
   try{
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:"environment"}, // BACK camera only
-      audio:false
-    });
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
     cam.srcObject = stream;
+    soilEl.innerText="Scanning soil…";
+    startScan();
   }catch(e){
-    alert("Camera access failed");
+    alert("Camera access failed: " + e);
     console.error(e);
   }
 }
-// Start back camera
-startCamera();
 
 /* ================= SCAN LOOP ================= */
-const scanTimer=setInterval(()=>{
-  if(!scanning||locked) return;
+function startScan(){
+  const scanTimer = setInterval(()=>{
+    if(!scanning || locked) return;
+    scanStep++;
+    soilEl.innerText="Scanning soil" + ".".repeat(scanStep%4);
 
-  scanStep++;
-  soilEl.innerText="Scanning soil" + ".".repeat(scanStep%4);
-
-  if(scanStep>=5){
-    autoDetect();
-    clearInterval(scanTimer);
-  }
-},1000);
+    if(scanStep>=5){
+      autoDetect();
+      clearInterval(scanTimer);
+    }
+  },1000);
+}
 
 /* ================= AUTO DETECT ================= */
 function autoDetect(){
@@ -244,6 +236,12 @@ function forceDemo(){
 lockBtn.onclick=()=>{
   locked=!locked;
   lockBtn.innerText=locked?"UNLOCK SOIL":"LOCK SOIL";
+};
+
+/* ================= START BUTTON ================= */
+startBtn.onclick = ()=>{
+  startCamera();
+  startBtn.style.display="none"; // hide after tap
 };
 
 /* ================= CLEANUP ================= */
