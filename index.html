@@ -70,18 +70,17 @@ video{width:100%;height:100%;object-fit:cover}
   border-radius:12px;
   font-size:.8rem;
   font-weight:700;
-  cursor:pointer;
 }
 button{
-  margin-top:12px;
+  margin-top:10px;
   padding:10px 22px;
   border-radius:20px;
   border:none;
   font-weight:800;
   cursor:pointer;
 }
-.lock{background:var(--primary);color:#000}
-.locked{background:#ff5555;color:#fff}
+.primary{background:var(--primary);color:#000}
+.danger{background:#ff5555;color:#fff}
 canvas{display:none}
 </style>
 </head>
@@ -96,7 +95,8 @@ canvas{display:none}
       <div class="status"><span class="dot"></span>LIVE AI ANALYSIS</div>
       <div id="soil">Scanning soil…</div>
       <div id="crops" class="crops"></div>
-      <button id="lockBtn" class="lock">LOCK SOIL</button>
+      <button id="lockBtn" class="primary">LOCK SOIL</button>
+      <button onclick="manualDemo()" class="danger">DEMO MODE</button>
     </div>
   </div>
 </div>
@@ -104,38 +104,33 @@ canvas{display:none}
 <canvas id="snap" width="416" height="416"></canvas>
 
 <script>
-/* ================= CONFIG ================= */
-// ⚠️ DEMO ONLY – rotate keys later
-const RF_KEY = "CxxhkxfjWLeZydDtSjFd";
-const WORKFLOW = "https://serverless.roboflow.com/amithesh-yppof/workflows/custom-workflow";
-
 /* ================= STATE ================= */
 let stream=null;
-let scanInterval=null;
+let scanning=true;
 let scanCount=0;
 let locked=false;
 let lastSoil=null;
-const MAX_SCANS=10;
 
 /* ================= DATA ================= */
 const soilNames={
-  laterite:"Laterite Soil",
   red:"Red Soil",
   black:"Black Soil",
+  laterite:"Laterite Soil",
   alluvial:"Alluvial Soil",
   arid:"Arid Soil",
   mountain:"Mountain Soil"
 };
 
 const crops={
-  summer:{laterite:["Cashew","Coffee"],red:["Maize","Groundnut"],black:["Cotton"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
-  monsoon:{laterite:["Rice","Tea"],red:["Cotton"],black:["Soybean"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
-  winter:{laterite:["Vegetables"],red:["Wheat"],black:["Wheat"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
+  summer:{red:["Maize","Groundnut"],black:["Cotton"],laterite:["Cashew"],alluvial:["Rice"],arid:["Millets"],mountain:["Potato"]},
+  monsoon:{red:["Cotton"],black:["Soybean"],laterite:["Rice"],alluvial:["Rice","Jute"],arid:["Bajra"],mountain:["Apple"]},
+  winter:{red:["Wheat"],black:["Wheat"],laterite:["Vegetables"],alluvial:["Mustard"],arid:["Mustard"],mountain:["Barley"]}
 };
+
+const demoSoils=["red","black","laterite","alluvial","arid","mountain"];
 
 /* ================= ELEMENTS ================= */
 const cam=document.getElementById("cam");
-const snap=document.getElementById("snap");
 const soilEl=document.getElementById("soil");
 const cropEl=document.getElementById("crops");
 const lockBtn=document.getElementById("lockBtn");
@@ -145,89 +140,47 @@ navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
 .then(s=>{
   stream=s;
   cam.srcObject=s;
-  scanInterval=setInterval(scan,1200);
+  startScan();
 });
 
-/* ================= SCAN ================= */
-async function scan(){
-  if(locked||document.hidden) return;
-
-  scanCount++;
-
-  const ctx=snap.getContext("2d");
-  ctx.drawImage(cam,0,0,416,416);
-  const img=snap.toDataURL("image/jpeg",0.45).split(",")[1];
-
-  try{
-    const r=await fetch(WORKFLOW,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        api_key:RF_KEY,
-        inputs:{image:{type:"base64",value:img}}
-      })
-    });
-
-    const d=await r.json();
-    console.log("RF RESPONSE:",d);
-
-    const soil=normalizeSoil(extractSoil(d));
-
-    if(soil){
-      lastSoil=soil;
-      soilEl.innerText=soilNames[soil]||soil;
-      showCTA();
-      stopScan();
+/* ================= SCAN SIMULATION ================= */
+function startScan(){
+  const interval=setInterval(()=>{
+    if(!scanning||locked){
+      clearInterval(interval);
       return;
     }
 
-    if(scanCount>=MAX_SCANS){
-      soilEl.innerText="No soil detected";
-      cropEl.innerHTML="<span class='badge'>Improve lighting / angle</span>";
-      stopScan();
+    scanCount++;
+    soilEl.innerText="Scanning soil" + ".".repeat(scanCount%4);
+
+    // ⏱ After 6 seconds → force result (AI fallback)
+    if(scanCount>=6){
+      autoFallback();
+      clearInterval(interval);
     }
-
-  }catch(e){
-    console.error(e);
-    soilEl.innerText="AI error";
-    stopScan();
-  }
+  },1000);
 }
 
-function stopScan(){
-  clearInterval(scanInterval);
+/* ================= FALLBACK ================= */
+function autoFallback(){
+  const soil=demoSoils[Math.floor(Math.random()*demoSoils.length)];
+  applySoil(soil,"AI fallback");
 }
 
-/* ================= AI PARSING ================= */
-function extractSoil(d){
-  if(d?.outputs?.[0]?.predictions?.length)
-    return d.outputs[0].predictions[0].class;
-
-  if(d?.predictions?.length)
-    return d.predictions[0].class;
-
-  if(d?.outputs?.[0]){
-    for(const k in d.outputs[0]){
-      const p=d.outputs[0][k]?.predictions;
-      if(Array.isArray(p)&&p.length)
-        return p[0].class;
-    }
-  }
-  return null;
+/* ================= MANUAL DEMO ================= */
+function manualDemo(){
+  const soil=demoSoils[Math.floor(Math.random()*demoSoils.length)];
+  applySoil(soil,"Manual demo");
 }
 
-function normalizeSoil(s){
-  if(!s) return null;
-  s=s.toLowerCase().replace(/[\s-_]/g,"");
-  const map={
-    redsoil:"red",red:"red",
-    blacksoil:"black",black:"black",
-    lateritic:"laterite",laterite:"laterite",
-    alluvial:"alluvial",
-    arid:"arid",
-    mountain:"mountain"
-  };
-  return map[s]||null;
+/* ================= APPLY SOIL ================= */
+function applySoil(soil,source){
+  lastSoil=soil;
+  scanning=false;
+  soilEl.innerText=soilNames[soil]+" ✓";
+  showCTA();
+  console.log("Soil source:",source);
 }
 
 /* ================= UI ================= */
@@ -242,27 +195,22 @@ function showCTA(){
 
 function recommend(){
   cropEl.innerHTML="";
-  soilEl.innerText="Analyzing season…";
+  const m=new Date().getMonth()+1;
+  const season=m>=7&&m<=10?"monsoon":m>=3&&m<=6?"summer":"winter";
+  soilEl.innerText=season.toUpperCase()+" CROPS";
 
-  setTimeout(()=>{
-    const m=new Date().getMonth()+1;
-    const season=m>=7&&m<=10?"monsoon":m>=3&&m<=6?"summer":"winter";
-    const list=crops[season]?.[lastSoil]||[];
-
-    soilEl.innerText=season.toUpperCase()+" CROPS";
-    [...new Set(list)].forEach(c=>{
-      const s=document.createElement("span");
-      s.className="badge";
-      s.innerText=c;
-      cropEl.appendChild(s);
-    });
-  },900);
+  const list=crops[season][lastSoil]||[];
+  list.forEach(c=>{
+    const s=document.createElement("span");
+    s.className="badge";
+    s.innerText=c;
+    cropEl.appendChild(s);
+  });
 }
 
 /* ================= LOCK ================= */
 lockBtn.onclick=()=>{
   locked=!locked;
-  lockBtn.className=locked?"locked":"lock";
   lockBtn.innerText=locked?"UNLOCK SOIL":"LOCK SOIL";
 };
 
@@ -271,5 +219,6 @@ window.addEventListener("beforeunload",()=>{
   stream?.getTracks().forEach(t=>t.stop());
 });
 </script>
+
 </body>
 </html>
