@@ -76,19 +76,26 @@ const isAndroid=/Android/.test(navigator.userAgent);
 /* ================= CAMERA START ================= */
 async function startCamera(){
   if(stream) stream.getTracks().forEach(t=>t.stop());
+
   let constraints={video:true,audio:false};
 
+  // For iOS/Android use deviceId of back camera
   if(isiOS || isAndroid){
-    constraints.video={ facingMode:{ exact:"environment" } }; // force back camera
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind==="videoinput");
+    const backCamera = videoDevices.find(d => d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("rear")) || videoDevices[0];
+    if(backCamera){
+      constraints.video={ deviceId:{ exact: backCamera.deviceId } };
+    }
   }
 
   try{
-    stream=await navigator.mediaDevices.getUserMedia(constraints);
-    cam.srcObject=stream;
-    soilEl.innerText="Scanning soil…";
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    cam.srcObject = stream;
+    startBtn.style.display="none";
     startScan();
   }catch(e){
-    alert("Cannot access back camera: " + e);
+    alert("Cannot access back camera: "+e);
     console.error(e);
   }
 }
@@ -160,10 +167,7 @@ lockBtn.onclick=()=>{
 };
 
 /* ================= START BUTTON ================= */
-startBtn.onclick=()=>{
-  startCamera();
-  startBtn.style.display="none"; // hide after tap
-};
+startBtn.onclick=()=>startCamera();
 
 /* ================= CLEANUP ================= */
 window.addEventListener("beforeunload",()=>{ stream?.getTracks().forEach(t=>t.stop()); });
